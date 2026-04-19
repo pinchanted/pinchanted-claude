@@ -8,9 +8,6 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_NO_LOCKFILE": "1"
       }
     },
     "preview": {
