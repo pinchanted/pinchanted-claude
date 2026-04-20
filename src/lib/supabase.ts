@@ -1,12 +1,13 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string;
 
-// Use SecureStore on native, localStorage on web
+// Use AsyncStorage on native, localStorage on web
 const storage = Platform.OS === 'web'
   ? {
       getItem: (key: string) =>
@@ -16,12 +17,7 @@ const storage = Platform.OS === 'web'
       removeItem: (key: string) =>
         Promise.resolve(localStorage.removeItem(key)),
     }
-  : {
-      getItem: (key: string) => SecureStore.getItemAsync(key),
-      setItem: (key: string, value: string) =>
-        SecureStore.setItemAsync(key, value),
-      removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-    };
+  : AsyncStorage;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -337,42 +333,66 @@ export const identifyPin = async (
 // STORAGE HELPERS
 // ============================================================
 
-// Compress image using canvas (web only)
-const compressImage = (base64: string): Promise<string> => {
-  return new Promise((resolve) => {
-    try {
-      const img = new window.Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 800;
-        let width = img.width;
-        let height = img.height;
+// Compress image - web uses canvas, native passes through
+const compressImage = async (
+  base64: string,
+  imageUri: string
+): Promise<{ base64: string; uri: string }> => {
+  // On web - use canvas compression
+  if (typeof document !== 'undefined') {
+    return new Promise((resolve) => {
+      try {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 800;
+          let width = img.width;
+          let height = img.height;
 
-        if (width > height && width > MAX_SIZE) {
-          height = (height * MAX_SIZE) / width;
-          width = MAX_SIZE;
-        } else if (height > MAX_SIZE) {
-          width = (width * MAX_SIZE) / height;
-          height = MAX_SIZE;
-        }
+          if (width > height && width > MAX_SIZE) {
+            height = (height * MAX_SIZE) / width;
+            width = MAX_SIZE;
+          } else if (height > MAX_SIZE) {
+            width = (width * MAX_SIZE) / height;
+            height = MAX_SIZE;
+          }
 
-        canvas.width = width;
-        canvas.height = height;
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          const compressed = canvas
+            .toDataURL('image/jpeg', 0.7)
+            .split(',')[1];
+          resolve({ base64: compressed, uri: imageUri });
+        };
+        img.onerror = () => resolve({ base64, uri: imageUri });
+        img.src = `data:image/webp;base64,${base64}`;
+      } catch {
+        resolve({ base64, uri: imageUri });
+      }
+    });
+  }
 
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-
-        const compressed = canvas
-          .toDataURL('image/jpeg', 0.7)
-          .split(',')[1];
-        resolve(compressed);
-      };
-      img.onerror = () => resolve(base64);
-      img.src = `data:image/webp;base64,${base64}`;
-    } catch {
-      resolve(base64);
-    }
-  });
+  // On native - use expo-image-manipulator to resize
+  try {
+    const ImageManipulator = require('expo-image-manipulator');
+    const result = await ImageManipulator.manipulateAsync(
+      imageUri,
+      [{ resize: { width: 800 } }],
+      {
+        compress: 0.7,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+    return {
+      base64: result.base64 || base64,
+      uri: result.uri,
+    };
+  } catch {
+    return { base64, uri: imageUri };
+  }
 };
 
 export const uploadPinImage = async (
@@ -385,11 +405,12 @@ export const uploadPinImage = async (
       ? imageBase64.split(',')[1]
       : imageBase64;
 
-    // Compress first
-    const compressedBase64 = await compressImage(base64Data);
+    // Compress image
+    const compressed = await compressImage(base64Data, imageUri);
+    console.log('Upload: Compressed');
 
-    // Convert to Uint8Array directly — avoids fetch CORS issues
-    const byteCharacters = atob(compressedBase64);
+    // Convert to Uint8Array
+    const byteCharacters = atob(compressed.base64);
     const byteArray = new Uint8Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
       byteArray[i] = byteCharacters.charCodeAt(i);
@@ -398,19 +419,20 @@ export const uploadPinImage = async (
     const timestamp = Date.now();
     const filename = `${userId}/${timestamp}.jpg`;
 
+    console.log('Upload: Uploading to Supabase...');
     const { data, error } = await supabase.storage
       .from('user-pins')
       .upload(filename, byteArray, {
         contentType: 'image/jpeg',
         upsert: false,
-        duplex: 'half',
-      } as any);
+      });
 
     if (error) {
       console.error('Upload error:', error);
       return null;
     }
 
+    console.log('Upload: Success:', data.path);
     return data.path;
   } catch (error) {
     console.error('Upload exception:', error);
@@ -427,4 +449,12 @@ export const getPinImageUrl = async (
     .createSignedUrl(path, 3600);
   if (error) return null;
   return data.signedUrl;
+};
+
+export const debugAuth = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log('Session:', JSON.stringify(session));
+  console.log('User:', JSON.stringify(user));
+  return { session, user };
 };

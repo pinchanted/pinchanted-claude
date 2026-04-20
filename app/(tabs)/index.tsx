@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,9 +37,9 @@ export default function HomeScreen() {
     wishlistCount: 0,
   });
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+useEffect(() => {
+  fetchStats();
+}, []);
 
   const fetchStats = async () => {
     if (!profile?.id) return;

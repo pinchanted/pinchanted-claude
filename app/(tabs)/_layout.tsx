@@ -8,6 +8,7 @@ import { View } from 'react-native';
 import Svg, { Path, Rect, Polyline } from 'react-native-svg';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HomeIcon = ({ color }: { color: string }) => (
   <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
@@ -54,6 +55,8 @@ const TradesIcon = ({ color }: { color: string }) => (
 );
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -62,8 +65,8 @@ export default function TabLayout() {
           backgroundColor: Colors.overlay,
           borderTopWidth: 0.5,
           borderTopColor: Colors.goldBorder,
-          height: Theme.tabBarHeight,
-          paddingBottom: 8,
+          height: Theme.tabBarHeight + insets.bottom,
+          paddingBottom: insets.bottom + 4,
           paddingTop: 8,
         },
         tabBarActiveTintColor: Colors.gold,

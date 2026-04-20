@@ -22,11 +22,9 @@ import { AntDesign } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useCollectionStore } from '../../src/stores/collection.store';
-import {
-  supabase,
-  uploadPinImage,
-} from '../../src/lib/supabase';
+import { supabase, uploadPinImage } from '../../src/lib/supabase';
 import { identifyPinWithClaude } from '../../src/lib/claude';
+import { getCurrentUserId, setCurrentSession } from '../../src/lib/auth';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
 
@@ -54,7 +52,6 @@ export default function AddPinScreen() {
   const [isNotDisney, setIsNotDisney] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // User editable fields
   const [purchasePrice, setPurchasePrice] = useState('');
   const [condition, setCondition] = useState('Mint');
   const [notes, setNotes] = useState('');
@@ -113,37 +110,37 @@ export default function AddPinScreen() {
   };
 
   const identifyPinFromImage = async (base64: string) => {
-  setStep('identifying');
-  setIsLoading(true);
+    setStep('identifying');
+    setIsLoading(true);
 
-  try {
-    const result = await identifyPinWithClaude(base64);
+    try {
+      const result = await identifyPinWithClaude(base64);
 
-    if (!result.is_disney_pin) {
-      setIsNotDisney(true);
+      if (!result.is_disney_pin) {
+        setIsNotDisney(true);
+        setStep('results');
+        setIsLoading(false);
+        return;
+      }
+
+      setMatches(result.matches || []);
+      setIsNotDisney(false);
+
+      if (result.matches?.length > 0) {
+        setSelectedMatch(result.matches[0]);
+      }
+
       setStep('results');
-      setIsLoading(false);
-      return;
+    } catch (error) {
+      console.error('Identification error:', error);
+      Alert.alert(
+        'Identification failed',
+        'Could not identify the pin. Please try again with a clearer photo.',
+        [{ text: 'Try again', onPress: () => setStep('capture') }]
+      );
     }
-
-    setMatches(result.matches || []);
-    setIsNotDisney(false);
-
-    if (result.matches?.length > 0) {
-      setSelectedMatch(result.matches[0]);
-    }
-
-    setStep('results');
-  } catch (error) {
-    console.error('Identification error:', error);
-    Alert.alert(
-      'Identification failed',
-      'Could not identify the pin. Please try again with a clearer photo.',
-      [{ text: 'Try again', onPress: () => setStep('capture') }]
-    );
-  }
-  setIsLoading(false);
-};
+    setIsLoading(false);
+  };
 
   const handleSelectMatch = (match: PinMatch) => {
     setSelectedMatch(match);
@@ -165,79 +162,100 @@ export default function AddPinScreen() {
   };
 
   const handleAddToCollection = async () => {
-  if (!profile?.id || !selectedMatch) return;
-  if (!selectedMatch.name.trim()) {
-    Alert.alert('Missing name', 'Please enter a name for this pin.');
-    return;
-  }
+    setIsLoading(true);
 
-  setIsLoading(true);
+    try {
+      // Get user ID from memory session first, then Supabase
+      let userId = getCurrentUserId() || profile?.id;
 
-  try {
-// Always attempt image upload
-let storedImagePath: string | null = null;
-if (imageUri && imageBase64) {
-  storedImagePath = await uploadPinImage(
-    profile.id,
-    imageUri,
-    imageBase64
-  );
-}
+      if (!userId) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setCurrentSession(session);
+          userId = session.user.id;
+        }
+      }
 
-    // Create community pin record
-    const { data: communityPin, error: communityError } = await supabase
-      .from('community_pins')
-      .insert({
-        name: selectedMatch.name,
-        series_name: selectedMatch.series_name,
-        edition: selectedMatch.edition,
-        origin: selectedMatch.origin,
-        original_price: selectedMatch.original_price,
-        release_date: selectedMatch.release_date
-          ? `${selectedMatch.release_date}-01-01`
-          : null,
-        contributed_by: profile.id,
-        confirmation_count: 1,
-        status: 'unverified',
-        image_path: storedImagePath,
-      })
-      .select()
-      .single();
+      if (!userId) {
+        Alert.alert('Error', 'You must be logged in to add pins.');
+        setIsLoading(false);
+        return;
+      }
 
-    if (communityError) throw communityError;
+      if (!selectedMatch?.name?.trim()) {
+        Alert.alert('Missing name', 'Please enter a name for this pin.');
+        setIsLoading(false);
+        return;
+      }
 
-    // Add to collection
-    const { data: collectionPin, error: collectionError } = await supabase
-      .from('collection_pins')
-      .insert({
-        user_id: profile.id,
-        community_pin_id: communityPin.id,
-        my_purchase_price: purchasePrice
-          ? parseFloat(purchasePrice) : null,
-        condition,
-        notes: notes || null,
-        my_image_path: storedImagePath,
-      })
-      .select(`
-        *,
-        community_pin:community_pins(*)
-      `)
-      .single();
+      // Upload image
+      let storedImagePath: string | null = null;
+      if (imageUri && imageBase64) {
+        storedImagePath = await uploadPinImage(
+          userId,
+          imageUri,
+          imageBase64
+        );
+      }
 
-    if (collectionError) throw collectionError;
+      // Create community pin
+      const { data: communityPin, error: communityError } = await supabase
+        .from('community_pins')
+        .insert({
+          name: selectedMatch.name,
+          series_name: selectedMatch.series_name,
+          edition: selectedMatch.edition,
+          origin: selectedMatch.origin,
+          original_price: selectedMatch.original_price,
+          release_date: selectedMatch.release_date
+            ? `${selectedMatch.release_date}-01-01`
+            : null,
+          contributed_by: userId,
+          confirmation_count: 1,
+          status: 'unverified',
+          image_path: storedImagePath,
+        })
+        .select()
+        .single();
 
-    addPin(collectionPin as any);
-    setStep('success');
-  } catch (error) {
-    console.error('Add pin error:', error);
-    Alert.alert(
-      'Error',
-      'Could not add pin to collection. Please try again.'
-    );
-  }
+      if (communityError) {
+        Alert.alert('Error', communityError.message);
+        setIsLoading(false);
+        return;
+      }
 
-  setIsLoading(false);
-};
+      // Add to collection
+      const { data: collectionPin, error: collectionError } = await supabase
+        .from('collection_pins')
+        .insert({
+          user_id: userId,
+          community_pin_id: communityPin.id,
+          my_purchase_price: purchasePrice
+            ? parseFloat(purchasePrice) : null,
+          condition,
+          notes: notes || null,
+          my_image_path: storedImagePath,
+        })
+        .select(`
+          *,
+          community_pin:community_pins(*)
+        `)
+        .single();
+
+      if (collectionError) {
+        Alert.alert('Error', collectionError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      addPin(collectionPin as any);
+      setStep('success');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Unknown error');
+    }
+
+    setIsLoading(false);
+  };
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.85) return Colors.success;
@@ -306,10 +324,6 @@ if (imageUri && imageBase64) {
                   Fill the frame with the pin for best accuracy
                 </Text>
               </View>
-              {/* TODO: Add on-device background removal here
-                  iOS: Apple Vision VNGenerateForegroundInstanceMaskRequest
-                  Android: Google ML Kit Subject Segmentation
-                  Replace processedImage below with the result */}
             </View>
 
             <View style={styles.captureButtons}>
@@ -1302,7 +1316,6 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     fontWeight: '500',
   },
-
   addButton: {
     backgroundColor: Colors.crimson,
     borderRadius: Theme.radius.pill,

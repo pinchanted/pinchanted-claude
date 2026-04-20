@@ -19,7 +19,10 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Pinchanted uses your camera to photograph pins for AI identification.",
         "NSPhotoLibraryUsageDescription": "Pinchanted accesses your photo library so you can upload pin images.",
-        "NSPhotoLibraryAddUsageDescription": "Pinchanted saves pin images to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "Pinchanted saves pin images to your photo library.",
+        "softwareKeyboardLayoutMode": "pan",
+"navigationBarColor": "#08103d",
+"edgeToEdgeEnabled": true
       }
     },
     "android": {
