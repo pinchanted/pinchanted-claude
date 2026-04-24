@@ -1,8 +1,21 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import 'react-native-url-polyfill/auto';
 import { useAuthStore } from '../src/stores/auth.store';
+
+// Handle notification taps — deep link to the relevant trade
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 export default function RootLayout() {
   const { initialize } = useAuthStore();
@@ -11,6 +24,21 @@ export default function RootLayout() {
     initialize();
     // Warm up withoutbg Docker instance on app launch
     fetch('https://bg.pinchanted.ca/api/health').catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Handle notification tap when app is foregrounded or opened from background
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, any>;
+      const trade_id = data?.trade_id;
+
+      if (trade_id) {
+        // All trade-related notifications deep link to the trade
+        router.push(`/trade/${trade_id}` as any);
+      }
+    });
+
+    return () => sub.remove();
   }, []);
 
   return (
@@ -23,10 +51,7 @@ export default function RootLayout() {
         <Stack.Screen name="(onboarding)/step-1" />
         <Stack.Screen name="(onboarding)/step-2" />
         <Stack.Screen name="(onboarding)/step-3" />
-        <Stack.Screen
-          name="paywall"
-          options={{ presentation: 'modal' }}
-        />
+        <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
         <Stack.Screen name="reset-password" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="pin/[id]" />
