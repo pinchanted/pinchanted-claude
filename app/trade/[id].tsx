@@ -125,12 +125,14 @@ export default function TradeDetailScreen() {
 
     if (!data) return [];
 
-    const pinsWithImages = (data as CollectionPin[]).map((pin) => {
-      const imageUrl = pin.my_image_path
-        ? getPinImageUrl(pin.my_image_path)
-        : null;
-      return { ...pin, imageUrl };
-    });
+    const pinsWithImages = await Promise.all(
+      (data as CollectionPin[]).map(async (pin) => {
+        const imageUrl = pin.my_image_path
+          ? await getPinImageUrl(pin.my_image_path)
+          : null;
+        return { ...pin, imageUrl };
+      })
+    );
 
     return pinsWithImages;
   };
@@ -256,13 +258,11 @@ export default function TradeDetailScreen() {
               ? { initiator_received_at: new Date().toISOString() }
               : { recipient_received_at: new Date().toISOString() };
 
-            // Check if the OTHER user has ALREADY received
-            // using current trade state BEFORE our update
-            const otherAlreadyReceived = isInitiator
+            const bothReceived = isInitiator
               ? !!trade?.recipient_received_at
               : !!trade?.initiator_received_at;
 
-            const newStatus = otherAlreadyReceived ? 'completed' : 'delivered';
+            const newStatus = bothReceived ? 'completed' : 'delivered';
             const { error } = await updateTradeStatus(id, newStatus, updates);
 
             if (error) {
@@ -271,30 +271,30 @@ export default function TradeDetailScreen() {
               return;
             }
 
-            // ── Transfer pins via Edge Function (bypasses RLS) ────
-            // Initiator receives recipient's pins (requested_pin_ids)
-            // Recipient receives initiator's pins (offered_pin_ids)
+            // ── Transfer the pins this user just received ────
+            // Initiator receives the recipient's requested_pin_ids
+            // Recipient receives the initiator's offered_pin_ids
+            // This happens immediately when each user taps — independent
+            // of what the other user has done.
             const pinsIReceived = isInitiator
-              ? trade!.requested_pin_ids
-              : trade!.offered_pin_ids;
+              ? trade!.requested_pin_ids   // recipient sent these to me
+              : trade!.offered_pin_ids;    // initiator sent these to me
 
             if (pinsIReceived?.length) {
-              const { error: transferError } = await supabase.functions.invoke(
-                'transfer-trade-pins',
-                {
-                  body: {
-                    trade_id: id,
-                    pin_ids: pinsIReceived,
-                    recipient_user_id: profile!.id,
-                  },
-                }
-              );
+              const { error: transferError } = await supabase
+                .from('collection_pins')
+                .update({
+                  user_id: profile!.id,
+                  trade_status: 'available',
+                })
+                .in('id', pinsIReceived);
+
               if (transferError) {
                 console.error('Pin transfer error:', transferError.message);
               }
             }
 
-            if (otherAlreadyReceived) {
+            if (bothReceived) {
               await Promise.all([
                 sendNotification('trade_completed', otherUserId, {
                   from_username: profile?.username,
@@ -398,14 +398,10 @@ export default function TradeDetailScreen() {
     user?.display_name?.[0]?.toUpperCase() || '?';
 
   const renderPin = (pin: PinWithImage) => (
-    <View key={pin.id} style={[styles.pinCard, (pin as any).is_deleted && { opacity: 0.6 }]}>
+    <View key={pin.id} style={styles.pinCard}>
       <View style={styles.pinImageWrap}>
         {pin.imageUrl ? (
-          <Image
-            source={{ uri: pin.imageUrl }}
-            style={[styles.pinImage, (pin as any).is_deleted && { opacity: 0.5 }]}
-            resizeMode="cover"
-          />
+          <Image source={{ uri: pin.imageUrl }} style={styles.pinImage} resizeMode="cover" />
         ) : (
           <Text style={styles.pinEmoji}>📌</Text>
         )}
@@ -416,9 +412,6 @@ export default function TradeDetailScreen() {
           <Text style={styles.pinSeries} numberOfLines={1}>{getPinSeries(pin)}</Text>
         ) : null}
         <Text style={styles.pinCondition}>{pin.condition || 'Mint'}</Text>
-        {(pin as any).is_deleted && (
-          <Text style={styles.pinDeletedLabel}>Removed from collection</Text>
-        )}
       </View>
     </View>
   );
@@ -426,15 +419,7 @@ export default function TradeDetailScreen() {
   const renderUserCard = (user: any, label: string, isYou: boolean) => (
     <View style={styles.userCard}>
       <View style={styles.userAvatar}>
-        {user?.avatar_url ? (
-          <Image
-            source={{ uri: user.avatar_url }}
-            style={styles.userAvatarImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <Text style={styles.userAvatarText}>{getUserInitial(user)}</Text>
-        )}
+        <Text style={styles.userAvatarText}>{getUserInitial(user)}</Text>
       </View>
       <View style={styles.userInfo}>
         <Text style={styles.userLabel}>{label}</Text>
@@ -704,7 +689,7 @@ export default function TradeDetailScreen() {
                     <Text style={styles.cancelBtnText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.actionBtn}
+                    style={[styles.actionBtn, { flex: 1 }]}
                     onPress={handleMarkShipped}
                     disabled={actionLoading}
                   >
@@ -781,8 +766,8 @@ export default function TradeDetailScreen() {
                   )
                 )}
 
-                {/* Mark received — available for shipping AND delivered status */}
-                {(trade.status === 'shipping' || trade.status === 'delivered') && theyHaveShipped && !iHaveReceived && (
+                {/* Mark received — available as soon as the other party has shipped */}
+                {trade.status === 'shipping' && theyHaveShipped && !iHaveReceived && (
                   <TouchableOpacity
                     style={styles.actionBtn}
                     onPress={handleMarkReceived}
@@ -799,7 +784,7 @@ export default function TradeDetailScreen() {
                   </TouchableOpacity>
                 )}
 
-                {(trade.status === 'shipping' || trade.status === 'delivered') && iHaveReceived && (
+                {trade.status === 'shipping' && iHaveReceived && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="check" size={16} color={Colors.success} />
                     <Text style={styles.waitingText}>
@@ -809,11 +794,11 @@ export default function TradeDetailScreen() {
                   </View>
                 )}
 
-                {trade.status === 'delivered' && !iHaveReceived && (
+                {trade.status === 'delivered' && (
                   <View style={styles.waitingRow}>
-                    <AntDesign name="hourglass" size={16} color={Colors.gold} />
+                    <AntDesign name="check" size={16} color={Colors.success} />
                     <Text style={styles.waitingText}>
-                      Waiting for you to confirm receipt of your pins
+                      Both parties have confirmed receipt
                     </Text>
                   </View>
                 )}
@@ -1137,7 +1122,5 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.sm,
     paddingVertical: Theme.spacing.sm,
   },
-disputeBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
-  pinDeletedLabel: { fontSize: 10, color: Colors.error, fontStyle: 'italic', marginTop: 2 },
-  userAvatarImage: { width: '100%', height: '100%', borderRadius: 24 },
+  disputeBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
 });

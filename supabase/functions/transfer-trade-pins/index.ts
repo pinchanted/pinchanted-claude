@@ -4,8 +4,6 @@
 //
 // Transfers pins between users when they confirm receipt.
 // Runs with service role key to bypass RLS policies.
-//
-// Called when a user taps "I received my pins" in a trade.
 // ============================================================
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -14,8 +12,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 const dbHeaders = {
@@ -31,7 +28,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify the caller is authenticated
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -40,12 +36,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify JWT to get the calling user's ID
     const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': authHeader,
-      },
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': authHeader },
     });
 
     if (!verifyRes.ok) {
@@ -56,7 +48,6 @@ Deno.serve(async (req) => {
     }
 
     const { id: callerUserId } = await verifyRes.json();
-
     const { trade_id, pin_ids, recipient_user_id } = await req.json();
 
     if (!trade_id || !pin_ids?.length || !recipient_user_id) {
@@ -66,7 +57,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify the caller is actually a party in this trade
     const tradeRes = await fetch(
       `${SUPABASE_URL}/rest/v1/trades?id=eq.${trade_id}&select=initiator_id,recipient_id,status`,
       { headers: dbHeaders }
@@ -89,15 +79,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify the trade is in a valid state for transfer
-    if (!['shipping', 'delivered'].includes(trade.status)) {
+    // Allow shipping, delivered, AND completed — because updateTradeStatus
+    // may have already marked the trade 'completed' before this function runs
+    if (!['shipping', 'delivered', 'completed'].includes(trade.status)) {
       return new Response(
         JSON.stringify({ error: `Trade is in status '${trade.status}' — cannot transfer pins` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Transfer pins to the recipient using service role (bypasses RLS)
     const pinIdsList = pin_ids.map((id: string) => `"${id}"`).join(',');
     const transferRes = await fetch(
       `${SUPABASE_URL}/rest/v1/collection_pins?id=in.(${pinIdsList})`,
