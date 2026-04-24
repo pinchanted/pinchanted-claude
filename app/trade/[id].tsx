@@ -69,24 +69,30 @@ export default function TradeDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-
   const [showShippingForm, setShowShippingForm] = useState(false);
   const [carrier, setCarrier] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingMethod, setShippingMethod] = useState('standard');
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const messagesEndRef = useRef<any>(null);
 
-  
-const [messages, setMessages] = useState<any[]>([]);
-const [newMessage, setNewMessage] = useState('');
-const [sendingMessage, setSendingMessage] = useState(false);
-const messagesEndRef = useRef<any>(null);
+  useEffect(() => {
+    if (id) {
+      fetchTrade();
+      fetchMessages();
+    }
+  }, [id]);
 
-useEffect(() => {
-  if (id) {
-    fetchTrade();
-    fetchMessages();
-  }
-}, [id]);
+  useEffect(() => {
+    if (!id) return;
+    const sub = subscribeToTradeMessages(id, async () => {
+      const { data } = await getTradeMessages(id);
+      if (data) setMessages(data);
+    });
+    return () => { supabase.removeChannel(sub); };
+  }, [id]);
 
   const fetchTrade = async () => {
     setIsLoading(true);
@@ -123,18 +129,9 @@ useEffect(() => {
   };
 
   const fetchMessages = async () => {
-  const { data } = await getTradeMessages(id);
-  if (data) setMessages(data);
-};
-
-useEffect(() => {
-  if (!id) return;
-  const sub = subscribeToTradeMessages(id, async () => {
     const { data } = await getTradeMessages(id);
     if (data) setMessages(data);
-  });
-  return () => { supabase.removeChannel(sub); };
-}, [id]);
+  };
 
   const fetchPins = async (pinIds: string[]): Promise<PinWithImage[]> => {
     if (!pinIds.length) return [];
@@ -292,19 +289,15 @@ useEffect(() => {
               return;
             }
 
-            // ── Transfer the pins this user just received ────
-            // Initiator receives the recipient's requested_pin_ids
-            // Recipient receives the initiator's offered_pin_ids
-            // This happens immediately when each user taps — independent
-            // of what the other user has done.
             const pinsIReceived = isInitiator
-              ? trade!.requested_pin_ids   // recipient sent these to me
-              : trade!.offered_pin_ids;    // initiator sent these to me
+              ? trade!.requested_pin_ids
+              : trade!.offered_pin_ids;
 
             if (pinsIReceived?.length) {
-              const { error: transferError } = await supabase
-                .functions.invoke('transfer-trade-pins', { body: { trade_id: id, pin_ids: pinsIReceived, recipient_user_id: profile!.id } });
-
+              const { error: transferError } = await supabase.functions.invoke(
+                'transfer-trade-pins',
+                { body: { trade_id: id, pin_ids: pinsIReceived, recipient_user_id: profile!.id } }
+              );
               if (transferError) {
                 console.error('Pin transfer error:', transferError.message);
               }
@@ -347,26 +340,26 @@ useEffect(() => {
   };
 
   const handleSendMessage = async () => {
-  if (!newMessage.trim() || !profile?.id) return;
-  setSendingMessage(true);
-  const text = newMessage.trim();
-  setNewMessage('');
-  const { data, error } = await sendTradeMessage(id, profile.id, text);
-  if (error) {
-    setNewMessage(text);
-    Alert.alert('Error', 'Could not send message. Please try again.');
-  } else if (data) {
-    setMessages(prev => [...prev, data]);
-    const msgOtherUserId = trade?.initiator_id === profile.id
-      ? trade!.recipient_id
-      : trade!.initiator_id;
-    await sendNotification('trade_message' as any, msgOtherUserId, {
-      from_username: profile.username,
-      trade_id: id,
-    });
-  }
-  setSendingMessage(false);
-};
+    if (!newMessage.trim() || !profile?.id) return;
+    setSendingMessage(true);
+    const text = newMessage.trim();
+    setNewMessage('');
+    const { data, error } = await sendTradeMessage(id, profile.id, text);
+    if (error) {
+      setNewMessage(text);
+      Alert.alert('Error', 'Could not send message. Please try again.');
+    } else if (data) {
+      setMessages(prev => [...prev, data]);
+      const msgOtherUserId = trade?.initiator_id === profile?.id
+        ? trade!.recipient_id
+        : trade!.initiator_id;
+      await sendNotification('trade_message' as any, msgOtherUserId, {
+        from_username: profile.username,
+        trade_id: id,
+      });
+    }
+    setSendingMessage(false);
+  };
 
   const handleDispute = () => {
     Alert.alert(
@@ -456,7 +449,7 @@ useEffect(() => {
 
   const renderUserCard = (user: any, label: string, isYou: boolean) => (
     <View style={styles.userCard}>
-<View style={styles.userAvatar}>
+      <View style={styles.userAvatar}>
         {user?.avatar_url ? (
           <Image source={{ uri: user.avatar_url }} style={styles.userAvatarImage} resizeMode="cover" />
         ) : (
@@ -552,15 +545,9 @@ useEffect(() => {
   const expiryText = getExpiryText();
   const myPins = isInitiator ? offeredPins : requestedPins;
   const theirPins = isInitiator ? requestedPins : offeredPins;
-  const iHaveShipped = isInitiator
-    ? !!trade.initiator_shipped_at
-    : !!trade.recipient_shipped_at;
-  const theyHaveShipped = isInitiator
-    ? !!trade.recipient_shipped_at
-    : !!trade.initiator_shipped_at;
-  const iHaveReceived = isInitiator
-    ? !!trade.initiator_received_at
-    : !!trade.recipient_received_at;
+  const iHaveShipped = isInitiator ? !!trade.initiator_shipped_at : !!trade.recipient_shipped_at;
+  const theyHaveShipped = isInitiator ? !!trade.recipient_shipped_at : !!trade.initiator_shipped_at;
+  const iHaveReceived = isInitiator ? !!trade.initiator_received_at : !!trade.recipient_received_at;
 
   return (
     <LinearGradient colors={['#0f1d6e', '#0b1554', '#08103d']} style={styles.container}>
@@ -572,10 +559,7 @@ useEffect(() => {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Trade</Text>
-            <View style={[styles.statusPill, {
-              backgroundColor: statusConfig.bg,
-              borderColor: statusConfig.border,
-            }]}>
+            <View style={[styles.statusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
               <Text style={[styles.statusPillText, { color: statusConfig.color }]}>
                 {statusConfig.label}
               </Text>
@@ -588,21 +572,11 @@ useEffect(() => {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.gold}
-            />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.gold} />}
         >
           <View style={styles.metaRow}>
-            <Text style={styles.metaText}>
-              Started {getTimeAgo(trade.created_at)}
-            </Text>
-            {expiryText && (
-              <Text style={styles.expiryText}>{expiryText}</Text>
-            )}
+            <Text style={styles.metaText}>Started {getTimeAgo(trade.created_at)}</Text>
+            {expiryText && <Text style={styles.expiryText}>{expiryText}</Text>}
           </View>
 
           <View style={styles.section}>
@@ -613,40 +587,27 @@ useEffect(() => {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Pin exchange</Text>
-
             <View style={styles.exchangeBlock}>
               <View style={styles.exchangeHeader}>
                 <AntDesign name="arrow-down" size={14} color={Colors.success} />
-                <Text style={styles.exchangeLabel}>
-                  You receive from @{(otherUser as any)?.username || 'them'}
-                </Text>
+                <Text style={styles.exchangeLabel}>You receive from @{(otherUser as any)?.username || 'them'}</Text>
               </View>
               <View style={styles.pinList}>
-                {theirPins.length > 0
-                  ? theirPins.map(renderPin)
-                  : <Text style={styles.noPins}>No pins specified</Text>
-                }
+                {theirPins.length > 0 ? theirPins.map(renderPin) : <Text style={styles.noPins}>No pins specified</Text>}
               </View>
             </View>
-
             <View style={styles.swapDivider}>
               <View style={styles.swapLine} />
               <AntDesign name="swap" size={18} color={Colors.textMuted} />
               <View style={styles.swapLine} />
             </View>
-
             <View style={styles.exchangeBlock}>
               <View style={styles.exchangeHeader}>
                 <AntDesign name="arrow-up" size={14} color={Colors.error} />
-                <Text style={styles.exchangeLabel}>
-                  You send to @{(otherUser as any)?.username || 'them'}
-                </Text>
+                <Text style={styles.exchangeLabel}>You send to @{(otherUser as any)?.username || 'them'}</Text>
               </View>
               <View style={styles.pinList}>
-                {myPins.length > 0
-                  ? myPins.map(renderPin)
-                  : <Text style={styles.noPins}>No pins specified</Text>
-                }
+                {myPins.length > 0 ? myPins.map(renderPin) : <Text style={styles.noPins}>No pins specified</Text>}
               </View>
             </View>
           </View>
@@ -654,22 +615,8 @@ useEffect(() => {
           {(trade.initiator_shipped_at || trade.recipient_shipped_at) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Shipping</Text>
-              {renderShippingInfo(
-                trade.initiator_carrier,
-                trade.initiator_tracking_number,
-                trade.initiator_shipping_method,
-                trade.initiator_shipped_at,
-                trade.initiator_received_at,
-                `From @${(trade.initiator as any)?.username || 'initiator'}`
-              )}
-              {renderShippingInfo(
-                trade.recipient_carrier,
-                trade.recipient_tracking_number,
-                trade.recipient_shipping_method,
-                trade.recipient_shipped_at,
-                trade.recipient_received_at,
-                `From @${(trade.recipient as any)?.username || 'recipient'}`
-              )}
+              {renderShippingInfo(trade.initiator_carrier, trade.initiator_tracking_number, trade.initiator_shipping_method, trade.initiator_shipped_at, trade.initiator_received_at, `From @${(trade.initiator as any)?.username || 'initiator'}`)}
+              {renderShippingInfo(trade.recipient_carrier, trade.recipient_tracking_number, trade.recipient_shipping_method, trade.recipient_shipped_at, trade.recipient_received_at, `From @${(trade.recipient as any)?.username || 'recipient'}`)}
             </View>
           )}
 
@@ -677,69 +624,30 @@ useEffect(() => {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Add shipping details</Text>
               <View style={styles.shippingForm}>
-
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Shipping method</Text>
                   <View style={styles.segmentRow}>
                     {SHIPPING_METHODS.map(m => (
-                      <TouchableOpacity
-                        key={m.value}
-                        style={[styles.segmentBtn, shippingMethod === m.value && styles.segmentBtnActive]}
-                        onPress={() => setShippingMethod(m.value)}
-                      >
-                        <Text style={[styles.segmentBtnText, shippingMethod === m.value && styles.segmentBtnTextActive]}>
-                          {m.label}
-                        </Text>
+                      <TouchableOpacity key={m.value} style={[styles.segmentBtn, shippingMethod === m.value && styles.segmentBtnActive]} onPress={() => setShippingMethod(m.value)}>
+                        <Text style={[styles.segmentBtnText, shippingMethod === m.value && styles.segmentBtnTextActive]}>{m.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
-
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>
-                    Carrier{shippingMethod !== 'standard' ? ' *' : ' (optional)'}
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={carrier}
-                    onChangeText={setCarrier}
-                    placeholder="e.g. Canada Post, USPS, UPS"
-                    placeholderTextColor={Colors.textPlaceholder}
-                    autoCapitalize="words"
-                  />
+                  <Text style={styles.fieldLabel}>Carrier{shippingMethod !== 'standard' ? ' *' : ' (optional)'}</Text>
+                  <TextInput style={styles.input} value={carrier} onChangeText={setCarrier} placeholder="e.g. Canada Post, USPS, UPS" placeholderTextColor={Colors.textPlaceholder} autoCapitalize="words" />
                 </View>
-
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>
-                    Tracking number{shippingMethod !== 'standard' ? ' *' : ' (optional)'}
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    value={trackingNumber}
-                    onChangeText={setTrackingNumber}
-                    placeholder="Enter tracking number"
-                    placeholderTextColor={Colors.textPlaceholder}
-                    autoCapitalize="characters"
-                  />
+                  <Text style={styles.fieldLabel}>Tracking number{shippingMethod !== 'standard' ? ' *' : ' (optional)'}</Text>
+                  <TextInput style={styles.input} value={trackingNumber} onChangeText={setTrackingNumber} placeholder="Enter tracking number" placeholderTextColor={Colors.textPlaceholder} autoCapitalize="characters" />
                 </View>
-
                 <View style={styles.shippingFormActions}>
-                  <TouchableOpacity
-                    style={styles.cancelBtn}
-                    onPress={() => setShowShippingForm(false)}
-                  >
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowShippingForm(false)}>
                     <Text style={styles.cancelBtnText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { flex: 1 }]}
-                    onPress={handleMarkShipped}
-                    disabled={actionLoading}
-                  >
-                    {actionLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.actionBtnText}>Confirm shipped</Text>
-                    )}
+                  <TouchableOpacity style={[styles.actionBtn, { flex: 1 }]} onPress={handleMarkShipped} disabled={actionLoading}>
+                    {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.actionBtnText}>Confirm shipped</Text>}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -753,25 +661,10 @@ useEffect(() => {
 
                 {trade.status === 'pending' && isRecipient && (
                   <>
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={handleAccept}
-                      disabled={actionLoading}
-                    >
-                      {actionLoading ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <>
-                          <AntDesign name="check" size={15} color="#fff" />
-                          <Text style={styles.actionBtnText}>Accept offer</Text>
-                        </>
-                      )}
+                    <TouchableOpacity style={styles.actionBtn} onPress={handleAccept} disabled={actionLoading}>
+                      {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <><AntDesign name="check" size={15} color="#fff" /><Text style={styles.actionBtnText}>Accept offer</Text></>}
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.declineBtn}
-                      onPress={handleDecline}
-                      disabled={actionLoading}
-                    >
+                    <TouchableOpacity style={styles.declineBtn} onPress={handleDecline} disabled={actionLoading}>
                       <AntDesign name="close" size={15} color={Colors.error} />
                       <Text style={styles.declineBtnText}>Decline offer</Text>
                     </TouchableOpacity>
@@ -781,67 +674,41 @@ useEffect(() => {
                 {trade.status === 'pending' && isInitiator && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="clock-circle" size={16} color={Colors.textMuted} />
-                    <Text style={styles.waitingText}>
-                      Waiting for @{(otherUser as any)?.username} to respond
-                    </Text>
+                    <Text style={styles.waitingText}>Waiting for @{(otherUser as any)?.username} to respond</Text>
                   </View>
                 )}
 
-                {/* Both users can mark shipped independently */}
                 {(trade.status === 'confirmed' || trade.status === 'arrange_shipping' || trade.status === 'shipping') && (
                   !iHaveShipped ? (
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={() => setShowShippingForm(true)}
-                    >
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => setShowShippingForm(true)}>
                       <AntDesign name="inbox" size={15} color="#fff" />
                       <Text style={styles.actionBtnText}>Mark as shipped</Text>
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.waitingRow}>
                       <AntDesign name="check" size={16} color={Colors.success} />
-                      <Text style={styles.waitingText}>
-                        You've marked as shipped
-                        {!theyHaveShipped ? ` · Waiting for @${(otherUser as any)?.username}` : ''}
-                      </Text>
+                      <Text style={styles.waitingText}>You've marked as shipped{!theyHaveShipped ? ` · Waiting for @${(otherUser as any)?.username}` : ''}</Text>
                     </View>
                   )
                 )}
 
-                {/* Mark received — available as soon as the other party has shipped */}
                 {(trade.status === 'shipping' || trade.status === 'delivered') && theyHaveShipped && !iHaveReceived && (
-                  <TouchableOpacity
-                    style={styles.actionBtn}
-                    onPress={handleMarkReceived}
-                    disabled={actionLoading}
-                  >
-                    {actionLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <>
-                        <AntDesign name="check-circle" size={15} color="#fff" />
-                        <Text style={styles.actionBtnText}>Mark as received</Text>
-                      </>
-                    )}
+                  <TouchableOpacity style={styles.actionBtn} onPress={handleMarkReceived} disabled={actionLoading}>
+                    {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <><AntDesign name="check-circle" size={15} color="#fff" /><Text style={styles.actionBtnText}>Mark as received</Text></>}
                   </TouchableOpacity>
                 )}
 
                 {(trade.status === 'shipping' || trade.status === 'delivered') && iHaveReceived && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="check" size={16} color={Colors.success} />
-                    <Text style={styles.waitingText}>
-                      You've confirmed receipt — pins added to your collection
-                      {!theyHaveShipped ? ` · Waiting for @${(otherUser as any)?.username} to ship` : ''}
-                    </Text>
+                    <Text style={styles.waitingText}>You've confirmed receipt — pins added to your collection{!theyHaveShipped ? ` · Waiting for @${(otherUser as any)?.username} to ship` : ''}</Text>
                   </View>
                 )}
 
                 {trade.status === 'delivered' && !iHaveReceived && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="check" size={16} color={Colors.success} />
-                    <Text style={styles.waitingText}>
-                      Waiting for you to confirm receipt of your pins
-                    </Text>
+                    <Text style={styles.waitingText}>Waiting for you to confirm receipt of your pins</Text>
                   </View>
                 )}
 
@@ -855,29 +722,21 @@ useEffect(() => {
                 {(trade.status === 'declined' || trade.status === 'expired') && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="close-circle" size={16} color={Colors.textMuted} />
-                    <Text style={styles.waitingText}>
-                      This trade was {trade.status}
-                    </Text>
+                    <Text style={styles.waitingText}>This trade was {trade.status}</Text>
                   </View>
                 )}
 
                 {trade.status === 'disputed' && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="exclamation-circle" size={16} color={Colors.error} />
-                    <Text style={[styles.waitingText, { color: Colors.error }]}>
-                      This trade is under dispute — an admin will review it
-                    </Text>
+                    <Text style={[styles.waitingText, { color: Colors.error }]}>This trade is under dispute — an admin will review it</Text>
                   </View>
                 )}
 
                 {['shipping', 'delivered'].includes(trade.status) && (
                   <>
                     <View style={styles.actionDivider} />
-                    <TouchableOpacity
-                      style={styles.disputeBtn}
-                      onPress={handleDispute}
-                      disabled={actionLoading}
-                    >
+                    <TouchableOpacity style={styles.disputeBtn} onPress={handleDispute} disabled={actionLoading}>
                       <AntDesign name="warning" size={13} color={Colors.error} />
                       <Text style={styles.disputeBtnText}>Raise a dispute</Text>
                     </TouchableOpacity>
@@ -887,58 +746,59 @@ useEffect(() => {
             </View>
           )}
 
-{/* Messages */}
-<View style={styles.section}>
-  <Text style={styles.sectionTitle}>Messages</Text>
-  <View style={styles.messagesCard}>
-    {messages.length === 0 ? (
-      <Text style={styles.noMessages}>No messages yet. Start the conversation!</Text>
-    ) : (
-      messages.map((msg) => {
-        const isMe = msg.sender_id === profile?.id;
-        return (
-          <View key={msg.id} style={[styles.messageBubble, isMe ? styles.messageBubbleMe : styles.messageBubbleThem]}>
-            {!isMe && (
-              <View style={styles.messageAvatar}>
-                {msg.sender?.avatar_url ? (
-                  <Image source={{ uri: msg.sender.avatar_url }} style={styles.messageAvatarImage} resizeMode="cover" />
+          {/* Messages */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Messages</Text>
+            <View style={styles.messagesCard}>
+              {messages.length === 0 ? (
+                <Text style={styles.noMessages}>No messages yet. Start the conversation!</Text>
+              ) : (
+                messages.map((msg) => {
+                  const isMe = msg.sender_id === profile?.id;
+                  return (
+                    <View key={msg.id} style={[styles.messageBubble, isMe ? styles.messageBubbleMe : styles.messageBubbleThem]}>
+                      {!isMe && (
+                        <View style={styles.messageAvatar}>
+                          {msg.sender?.avatar_url ? (
+                            <Image source={{ uri: msg.sender.avatar_url }} style={styles.messageAvatarImage} resizeMode="cover" />
+                          ) : (
+                            <Text style={styles.messageAvatarText}>{msg.sender?.display_name?.[0]?.toUpperCase() || '?'}</Text>
+                          )}
+                        </View>
+                      )}
+                      <View style={[styles.messageBubbleContent, isMe ? styles.messageBubbleContentMe : styles.messageBubbleContentThem]}>
+                        <Text style={[styles.messageText, isMe ? styles.messageTextMe : styles.messageTextThem]}>{msg.message}</Text>
+                        <Text style={styles.messageTime}>{getTimeAgo(msg.created_at)}</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+            <View style={styles.messageInputRow}>
+              <TextInput
+                style={styles.messageInput}
+                value={newMessage}
+                onChangeText={setNewMessage}
+                placeholder="Send a message..."
+                placeholderTextColor={Colors.textPlaceholder}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity
+                style={[styles.messageSendBtn, !newMessage.trim() && styles.messageSendBtnDisabled]}
+                onPress={handleSendMessage}
+                disabled={!newMessage.trim() || sendingMessage}
+              >
+                {sendingMessage ? (
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.messageAvatarText}>{msg.sender?.display_name?.[0]?.toUpperCase() || '?'}</Text>
+                  <AntDesign name="arrow-right" size={18} color="#fff" />
                 )}
-              </View>
-            )}
-            <View style={[styles.messageBubbleContent, isMe ? styles.messageBubbleContentMe : styles.messageBubbleContentThem]}>
-              <Text style={[styles.messageText, isMe ? styles.messageTextMe : styles.messageTextThem]}>{msg.message}</Text>
-              <Text style={styles.messageTime}>{getTimeAgo(msg.created_at)}</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        );
-      })
-    )}
-  </View>
-  <View style={styles.messageInputRow}>
-    <TextInput
-      style={styles.messageInput}
-      value={newMessage}
-      onChangeText={setNewMessage}
-      placeholder="Send a message..."
-      placeholderTextColor={Colors.textPlaceholder}
-      multiline
-      maxLength={500}
-    />
-    <TouchableOpacity
-      style={[styles.messageSendBtn, !newMessage.trim() && styles.messageSendBtnDisabled]}
-      onPress={handleSendMessage}
-      disabled={!newMessage.trim() || sendingMessage}
-    >
-      {sendingMessage ? (
-        <ActivityIndicator size="small" color="#fff" />
-      ) : (
-        <AntDesign name="arrow-right" size={18} color="#fff" />
-      )}
-    </TouchableOpacity>
-  </View>
-</View>
+
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -949,81 +809,23 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.screenPadding,
-    paddingBottom: Theme.spacing.md,
-    backgroundColor: 'rgba(15,29,110,0.95)',
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(245,197,24,0.12)',
-  },
-  backButton: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Theme.screenPadding, paddingBottom: Theme.spacing.md, backgroundColor: 'rgba(15,29,110,0.95)', borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
+  backButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', gap: Theme.spacing.xs },
-  headerTitle: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
-  statusPill: {
-    borderRadius: Theme.radius.pill,
-    borderWidth: 0.5,
-    paddingVertical: 3, paddingHorizontal: 10,
-  },
+  headerTitle: { fontSize: Theme.fontSize.lg, fontWeight: '500', color: Colors.textPrimary },
+  statusPill: { borderRadius: Theme.radius.pill, borderWidth: 0.5, paddingVertical: 3, paddingHorizontal: 10 },
   statusPillText: { fontSize: Theme.fontSize.xs, fontWeight: '500' },
-
   scrollView: { flex: 1 },
-  scrollContent: {
-    padding: Theme.screenPadding,
-    paddingBottom: 60,
-    gap: Theme.spacing.xl,
-  },
-
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  scrollContent: { padding: Theme.screenPadding, paddingBottom: 60, gap: Theme.spacing.xl },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metaText: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   expiryText: { fontSize: Theme.fontSize.xs, color: Colors.gold },
-
   section: { gap: Theme.spacing.md },
-  sectionTitle: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: '500',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.md,
-    padding: Theme.spacing.md,
-  },
-  userAvatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: Colors.royalBlue,
-    borderWidth: 1.5, borderColor: Colors.goldBorder,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  userAvatarText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: '500',
-    color: Colors.gold,
-  },
+  sectionTitle: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
+  userCard: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.md, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.md },
+  userAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.royalBlue, borderWidth: 1.5, borderColor: Colors.goldBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  userAvatarText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.gold },
+  userAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
   userInfo: { flex: 1, gap: 2 },
   userLabel: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   userName: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
@@ -1032,193 +834,51 @@ const styles = StyleSheet.create({
   ratingText: { fontSize: Theme.fontSize.xs, color: Colors.gold },
   countryBadge: { flexShrink: 0 },
   countryFlag: { fontSize: 20 },
-
-  exchangeBlock: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.md,
-    overflow: 'hidden',
-  },
-  exchangeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-    padding: Theme.spacing.md,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(245,197,24,0.1)',
-  },
-  exchangeLabel: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
+  exchangeBlock: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, overflow: 'hidden' },
+  exchangeHeader: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm, padding: Theme.spacing.md, borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.1)' },
+  exchangeLabel: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textPrimary },
   pinList: { padding: Theme.spacing.sm, gap: Theme.spacing.sm },
-  noPins: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.textMuted,
-    padding: Theme.spacing.sm,
-    textAlign: 'center',
-  },
-  swapDivider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.md,
-  },
+  noPins: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, padding: Theme.spacing.sm, textAlign: 'center' },
+  swapDivider: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.md },
   swapLine: { flex: 1, height: 0.5, backgroundColor: 'rgba(255,255,255,0.1)' },
-
-  pinCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: Theme.radius.sm,
-    overflow: 'hidden',
-  },
-  pinImageWrap: {
-    width: 52, height: 52,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
+  pinCard: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.md, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: Theme.radius.sm, overflow: 'hidden' },
+  pinImageWrap: { width: 52, height: 52, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   pinImage: { width: '100%', height: '100%' },
   pinEmoji: { fontSize: 24 },
   pinInfo: { flex: 1, gap: 2, paddingRight: Theme.spacing.sm },
-  pinName: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    lineHeight: 18,
-  },
+  pinName: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textPrimary, lineHeight: 18 },
   pinSeries: { fontSize: Theme.fontSize.xs, color: Colors.gold, opacity: 0.7 },
   pinCondition: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
-
-  shippingInfoCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.md,
-    padding: Theme.spacing.md,
-    gap: Theme.spacing.sm,
-  },
-  shippingInfoLabel: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    marginBottom: Theme.spacing.xs,
-  },
-  shippingInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  shippingInfoCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.md, gap: Theme.spacing.sm },
+  shippingInfoLabel: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textPrimary, marginBottom: Theme.spacing.xs },
+  shippingInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   shippingInfoKey: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   shippingInfoValue: { fontSize: Theme.fontSize.xs, color: Colors.textPrimary, fontWeight: '500' },
-
-  shippingForm: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.md,
-    padding: Theme.spacing.md,
-    gap: Theme.spacing.md,
-  },
+  shippingForm: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.md, gap: Theme.spacing.md },
   fieldGroup: { gap: Theme.spacing.xs },
   fieldLabel: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, fontWeight: '500' },
-  input: {
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.2)',
-    borderRadius: Theme.radius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    color: Colors.textPrimary,
-    fontSize: Theme.fontSize.md,
-  },
+  input: { backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.sm, paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.md },
   segmentRow: { flexDirection: 'row', gap: Theme.spacing.xs },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: Theme.spacing.sm,
-    borderRadius: Theme.radius.sm,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-  },
+  segmentBtn: { flex: 1, paddingVertical: Theme.spacing.sm, borderRadius: Theme.radius.sm, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
   segmentBtnActive: { backgroundColor: Colors.goldFaint, borderColor: Colors.goldBorder },
   segmentBtnText: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   segmentBtnTextActive: { color: Colors.gold, fontWeight: '500' },
   shippingFormActions: { flexDirection: 'row', gap: Theme.spacing.md },
-  cancelBtn: {
-    flex: 1, paddingVertical: Theme.spacing.md,
-    borderRadius: Theme.radius.pill,
-    borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-  },
+  cancelBtn: { flex: 1, paddingVertical: Theme.spacing.md, borderRadius: Theme.radius.pill, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center' },
   cancelBtnText: { fontSize: Theme.fontSize.md, color: Colors.textMuted },
-
-  actionsCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.md,
-    padding: Theme.spacing.md,
-    gap: Theme.spacing.md,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Theme.spacing.sm,
-    backgroundColor: Colors.crimson,
-    borderRadius: Theme.radius.pill,
-    paddingVertical: Theme.spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-  },
+  actionsCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.md, gap: Theme.spacing.md },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, backgroundColor: Colors.crimson, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, borderWidth: 1, borderColor: Colors.goldBorder },
   actionBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
-  declineBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Theme.spacing.sm,
-    borderRadius: Theme.radius.pill,
-    paddingVertical: Theme.spacing.md,
-    borderWidth: 0.5,
-    borderColor: Colors.errorBorder,
-  },
+  declineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, borderWidth: 0.5, borderColor: Colors.errorBorder },
   declineBtnText: { fontSize: Theme.fontSize.md, color: Colors.error },
-  waitingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-    padding: Theme.spacing.sm,
-  },
+  waitingRow: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm, padding: Theme.spacing.sm },
   waitingText: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, flex: 1 },
-  completedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Theme.spacing.sm,
-    padding: Theme.spacing.sm,
-  },
+  completedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, padding: Theme.spacing.sm },
   completedEmoji: { fontSize: 24 },
-  completedText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: '500',
-    color: Colors.success,
-  },
+  completedText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.success },
   actionDivider: { height: 0.5, backgroundColor: 'rgba(255,255,255,0.08)' },
-  disputeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Theme.spacing.sm,
-    paddingVertical: Theme.spacing.sm,
-  },
+  disputeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, paddingVertical: Theme.spacing.sm },
   disputeBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
-  userAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
-
   messagesCard: { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.sm, gap: Theme.spacing.sm, minHeight: 60 },
   noMessages: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, textAlign: 'center', padding: Theme.spacing.md },
   messageBubble: { flexDirection: 'row', alignItems: 'flex-end', gap: Theme.spacing.xs },
