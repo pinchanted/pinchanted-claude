@@ -258,11 +258,11 @@ export default function TradeDetailScreen() {
               ? { initiator_received_at: new Date().toISOString() }
               : { recipient_received_at: new Date().toISOString() };
 
-            const bothReceived = isInitiator
+            const otherAlreadyReceived = isInitiator
               ? !!trade?.recipient_received_at
               : !!trade?.initiator_received_at;
 
-            const newStatus = bothReceived ? 'completed' : 'delivered';
+            const newStatus = otherAlreadyReceived ? 'completed' : 'delivered';
             const { error } = await updateTradeStatus(id, newStatus, updates);
 
             if (error) {
@@ -282,19 +282,14 @@ export default function TradeDetailScreen() {
 
             if (pinsIReceived?.length) {
               const { error: transferError } = await supabase
-                .from('collection_pins')
-                .update({
-                  user_id: profile!.id,
-                  trade_status: 'available',
-                })
-                .in('id', pinsIReceived);
+                .functions.invoke('transfer-trade-pins', { body: { trade_id: id, pin_ids: pinsIReceived, recipient_user_id: profile!.id } });
 
               if (transferError) {
                 console.error('Pin transfer error:', transferError.message);
               }
             }
 
-            if (bothReceived) {
+            if (otherAlreadyReceived) {
               await Promise.all([
                 sendNotification('trade_completed', otherUserId, {
                   from_username: profile?.username,
@@ -767,7 +762,7 @@ export default function TradeDetailScreen() {
                 )}
 
                 {/* Mark received — available as soon as the other party has shipped */}
-                {trade.status === 'shipping' && theyHaveShipped && !iHaveReceived && (
+                {(trade.status === 'shipping' || trade.status === 'delivered') && theyHaveShipped && !iHaveReceived && (
                   <TouchableOpacity
                     style={styles.actionBtn}
                     onPress={handleMarkReceived}
@@ -784,7 +779,7 @@ export default function TradeDetailScreen() {
                   </TouchableOpacity>
                 )}
 
-                {trade.status === 'shipping' && iHaveReceived && (
+                {(trade.status === 'shipping' || trade.status === 'delivered') && iHaveReceived && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="check" size={16} color={Colors.success} />
                     <Text style={styles.waitingText}>
@@ -794,11 +789,11 @@ export default function TradeDetailScreen() {
                   </View>
                 )}
 
-                {trade.status === 'delivered' && (
+                {trade.status === 'delivered' && !iHaveReceived && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="check" size={16} color={Colors.success} />
                     <Text style={styles.waitingText}>
-                      Both parties have confirmed receipt
+                      Waiting for you to confirm receipt of your pins
                     </Text>
                   </View>
                 )}
