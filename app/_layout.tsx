@@ -58,6 +58,7 @@ export default function RootLayout() {
         <Stack.Screen name="pin/add" />
         <Stack.Screen name="trade/[id]" />
         <Stack.Screen name="trade/new" />
+        <Stack.Screen name="trade/counter" />
         <Stack.Screen name="profile/index" />
         <Stack.Screen name="profile/[username]" />
         <Stack.Screen name="profile/shipping" />

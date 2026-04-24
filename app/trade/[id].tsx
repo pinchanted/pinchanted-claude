@@ -664,11 +664,56 @@ export default function TradeDetailScreen() {
                     <TouchableOpacity style={styles.actionBtn} onPress={handleAccept} disabled={actionLoading}>
                       {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <><AntDesign name="check" size={15} color="#fff" /><Text style={styles.actionBtnText}>Accept offer</Text></>}
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.counterBtn}
+                      onPress={() => router.push(`/trade/counter?trade_id=${trade.id}` as any)}
+                      disabled={actionLoading}
+                    >
+                      <AntDesign name="retweet" size={15} color={Colors.gold} />
+                      <Text style={styles.counterBtnText}>Counter offer</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.declineBtn} onPress={handleDecline} disabled={actionLoading}>
                       <AntDesign name="close" size={15} color={Colors.error} />
                       <Text style={styles.declineBtnText}>Decline offer</Text>
                     </TouchableOpacity>
                   </>
+                )}
+
+{/* Counter offer received */}
+                {trade.status === 'in_progress' && (trade as any).last_action_by !== profile?.id && (
+                  <>
+                    <View style={styles.counterReceivedRow}>
+                      <AntDesign name="retweet" size={16} color={Colors.gold} />
+                      <Text style={styles.counterReceivedText}>
+                        @{(otherUser as any)?.username} sent a counter offer — review the pin exchange above
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.actionBtn} onPress={handleAccept} disabled={actionLoading}>
+                      {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <><AntDesign name="check" size={15} color="#fff" /><Text style={styles.actionBtnText}>Accept counter offer</Text></>}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.counterBtn}
+                      onPress={() => router.push(`/trade/counter?trade_id=${trade.id}` as any)}
+                      disabled={actionLoading}
+                    >
+                      <AntDesign name="retweet" size={15} color={Colors.gold} />
+                      <Text style={styles.counterBtnText}>Counter again</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.declineBtn} onPress={handleDecline} disabled={actionLoading}>
+                      <AntDesign name="close" size={15} color={Colors.error} />
+                      <Text style={styles.declineBtnText}>Decline</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {/* I countered — waiting */}
+                {trade.status === 'in_progress' && (trade as any).last_action_by === profile?.id && (
+                  <View style={styles.waitingRow}>
+                    <AntDesign name="clock-circle" size={16} color={Colors.textMuted} />
+                    <Text style={styles.waitingText}>
+                      Counter offer sent — waiting for @{(otherUser as any)?.username} to respond
+                    </Text>
+                  </View>
                 )}
 
                 {trade.status === 'pending' && isInitiator && (
@@ -898,4 +943,8 @@ const styles = StyleSheet.create({
   messageInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.md, paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.md, maxHeight: 100 },
   messageSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.crimson, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: Colors.goldBorder },
   messageSendBtnDisabled: { opacity: 0.4 },
+  counterBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, borderWidth: 1, borderColor: Colors.goldBorder, backgroundColor: 'rgba(245,197,24,0.08)' },
+  counterBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500' as const, color: Colors.gold },
+  counterReceivedRow: { flexDirection: 'row', alignItems: 'flex-start' as const, gap: Theme.spacing.sm, padding: Theme.spacing.sm, backgroundColor: 'rgba(245,197,24,0.06)', borderRadius: Theme.radius.sm, borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)' },
+  counterReceivedText: { flex: 1, fontSize: Theme.fontSize.sm, color: Colors.gold, lineHeight: 18 },
 });
