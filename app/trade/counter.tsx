@@ -203,7 +203,7 @@ export default function CounterOfferScreen() {
             Alert.alert(
               'Counter offer sent! 🔄',
               `Your counter offer has been sent to @${otherUser?.username}. You'll be notified when they respond.`,
-              [{ text: 'View trade', onPress: () => router.replace(`/trade/${trade_id}`) }]
+              [{ text: 'View trade', onPress: () => setTimeout(() => router.replace(`/trade/${trade_id}` as any), 150) }]
             );
           },
         },
