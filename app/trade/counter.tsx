@@ -50,7 +50,8 @@ export default function CounterOfferScreen() {
   // from inside an Alert callback on both iOS and Android.
   useEffect(() => {
     if (navigateToTrade && trade_id) {
-      router.replace(`/trade/${trade_id}` as any);
+      router.dismissAll();
+      router.push(`/trade/${trade_id}` as any);
     }
   }, [navigateToTrade]);
 
