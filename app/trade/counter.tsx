@@ -40,11 +40,19 @@ export default function CounterOfferScreen() {
   const [myPins, setMyPins] = useState<PinWithImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [navigateToTrade, setNavigateToTrade] = useState(false);
 
-  // What I want from the other user
   const [requestedPinIds, setRequestedPinIds] = useState<string[]>([]);
-  // What I'm offering to the other user
   const [offeredPinIds, setOfferedPinIds] = useState<string[]>([]);
+
+  // ── Navigate AFTER Alert fully dismisses ───────────────────
+  // Using useEffect + state flag is the only safe way to navigate
+  // from inside an Alert callback on both iOS and Android.
+  useEffect(() => {
+    if (navigateToTrade && trade_id) {
+      router.replace(`/trade/${trade_id}` as any);
+    }
+  }, [navigateToTrade]);
 
   useEffect(() => {
     if (trade_id && profile?.id) fetchData();
@@ -53,7 +61,6 @@ export default function CounterOfferScreen() {
   const fetchData = async () => {
     setIsLoading(true);
 
-    // Load the trade
     const { data: tradeData } = await supabase
       .from('trades')
       .select(`
@@ -78,18 +85,14 @@ export default function CounterOfferScreen() {
     const otherId = isInitiator ? t.recipient_id : t.initiator_id;
     setOtherUser(other as Profile);
 
-    // Pre-populate: what I currently want = what was requested from me
-    // What I'm offering = what I originally offered
     if (isInitiator) {
       setRequestedPinIds(t.requested_pin_ids || []);
       setOfferedPinIds(t.offered_pin_ids || []);
     } else {
-      // Recipient countering: flip perspective
-      setRequestedPinIds(t.offered_pin_ids || []);   // I want what initiator offered
-      setOfferedPinIds(t.requested_pin_ids || []);   // I offer what initiator wanted
+      setRequestedPinIds(t.offered_pin_ids || []);
+      setOfferedPinIds(t.requested_pin_ids || []);
     }
 
-    // Load other user's available pins (plus currently traded pins so they can be kept)
     const { data: otherPinsData } = await supabase
       .from('collection_pins')
       .select(`*, reference_pin:reference_pins(*), community_pin:community_pins(*)`)
@@ -97,7 +100,6 @@ export default function CounterOfferScreen() {
       .in('trade_status', ['available', 'on_table'])
       .eq('is_deleted', false);
 
-    // Load my available pins
     const { data: myPinsData } = await supabase
       .from('collection_pins')
       .select(`*, reference_pin:reference_pins(*), community_pin:community_pins(*)`)
@@ -110,24 +112,21 @@ export default function CounterOfferScreen() {
     setIsLoading(false);
   };
 
-  const loadImages = (pins: CollectionPin[]): PinWithImage[] => {
-    return pins.map((pin) => ({
+  const loadImages = (pins: CollectionPin[]): PinWithImage[] =>
+    pins.map((pin) => ({
       ...pin,
       imageUrl: pin.my_image_path ? getPinImageUrl(pin.my_image_path) : null,
     }));
-  };
 
-  const toggleRequestedPin = (pinId: string) => {
+  const toggleRequestedPin = (pinId: string) =>
     setRequestedPinIds(prev =>
       prev.includes(pinId) ? prev.filter(id => id !== pinId) : [...prev, pinId]
     );
-  };
 
-  const toggleOfferedPin = (pinId: string) => {
+  const toggleOfferedPin = (pinId: string) =>
     setOfferedPinIds(prev =>
       prev.includes(pinId) ? prev.filter(id => id !== pinId) : [...prev, pinId]
     );
-  };
 
   const handleSubmit = async () => {
     if (requestedPinIds.length === 0) {
@@ -146,65 +145,68 @@ export default function CounterOfferScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Send counter',
-          onPress: async () => {
-            setIsSubmitting(true);
-
-            const isInitiator = trade?.initiator_id === profile?.id;
-            const otherUserId = isInitiator ? trade!.recipient_id : trade!.initiator_id;
-
-            // Update trade with new pin selections and set to in_progress
-            const { error } = await supabase
-              .from('trades')
-              .update({
-                status: 'in_progress',
-                offered_pin_ids: isInitiator ? offeredPinIds : requestedPinIds,
-                requested_pin_ids: isInitiator ? requestedPinIds : offeredPinIds,
-                counter_count: (trade?.counter_count || 0) + 1,
-                last_action_by: profile!.id,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', trade_id);
-
-            if (error) {
-              setIsSubmitting(false);
-              Alert.alert('Error', 'Could not send counter offer. Please try again.');
-              return;
-            }
-
-            // Update offered pins trade status
-            // Release old offered pins back to available
-            const oldOfferedPins = isInitiator ? trade!.offered_pin_ids : trade!.requested_pin_ids;
-            const newOfferedPins = isInitiator ? offeredPinIds : requestedPinIds;
-
-            // Pins no longer in the offer → back to available
-            const removedPins = oldOfferedPins.filter(id => !newOfferedPins.includes(id));
-            if (removedPins.length) {
-              await supabase
-                .from('collection_pins')
-                .update({ trade_status: 'available', trade_id: null })
-                .in('id', removedPins);
-            }
-
-            // New pins added to offer → mark on_table
-            const addedPins = newOfferedPins.filter(id => !oldOfferedPins.includes(id));
-            if (addedPins.length) {
-              await supabase
-                .from('collection_pins')
-                .update({ trade_status: 'on_table', trade_id: trade_id })
-                .in('id', addedPins);
-            }
-
-            await sendNotification('trade_offer_countered', otherUserId, {
-              from_username: profile?.username,
-              trade_id: trade_id,
-            });
-
-            setIsSubmitting(false);
-            setTimeout(() => router.replace(`/trade/${trade_id}` as any), 300);
+          onPress: () => {
+            // Run the async work in a separate function
+            // so we're not blocking inside the Alert callback
+            doSubmit();
           },
         },
       ]
     );
+  };
+
+  const doSubmit = async () => {
+    setIsSubmitting(true);
+
+    const isInitiator = trade?.initiator_id === profile?.id;
+    const otherUserId = isInitiator ? trade!.recipient_id : trade!.initiator_id;
+
+    const { error } = await supabase
+      .from('trades')
+      .update({
+        status: 'in_progress',
+        offered_pin_ids: isInitiator ? offeredPinIds : requestedPinIds,
+        requested_pin_ids: isInitiator ? requestedPinIds : offeredPinIds,
+        counter_count: (trade?.counter_count || 0) + 1,
+        last_action_by: profile!.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', trade_id);
+
+    if (error) {
+      setIsSubmitting(false);
+      Alert.alert('Error', 'Could not send counter offer. Please try again.');
+      return;
+    }
+
+    const oldOfferedPins = isInitiator ? trade!.offered_pin_ids : trade!.requested_pin_ids;
+    const newOfferedPins = isInitiator ? offeredPinIds : requestedPinIds;
+
+    const removedPins = oldOfferedPins.filter(id => !newOfferedPins.includes(id));
+    if (removedPins.length) {
+      await supabase
+        .from('collection_pins')
+        .update({ trade_status: 'available', trade_id: null })
+        .in('id', removedPins);
+    }
+
+    const addedPins = newOfferedPins.filter(id => !oldOfferedPins.includes(id));
+    if (addedPins.length) {
+      await supabase
+        .from('collection_pins')
+        .update({ trade_status: 'on_table', trade_id: trade_id })
+        .in('id', addedPins);
+    }
+
+    await sendNotification('trade_offer_countered', otherUserId, {
+      from_username: profile?.username,
+      trade_id: trade_id,
+    });
+
+    setIsSubmitting(false);
+    // Setting state triggers the useEffect which navigates safely
+    // after the component re-renders outside of any Alert callback
+    setNavigateToTrade(true);
   };
 
   const getPinName = (pin: CollectionPin) =>
@@ -274,7 +276,6 @@ export default function CounterOfferScreen() {
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-          {/* Other user card */}
           <View style={styles.sellerCard}>
             <View style={styles.sellerAvatar}>
               {otherUser?.avatar_url ? (
@@ -300,7 +301,6 @@ export default function CounterOfferScreen() {
             </Text>
           </View>
 
-          {/* Hint */}
           <View style={styles.hintCard}>
             <AntDesign name="edit" size={13} color={Colors.gold} />
             <Text style={styles.hintText}>
@@ -308,7 +308,6 @@ export default function CounterOfferScreen() {
             </Text>
           </View>
 
-          {/* Summary */}
           <View style={styles.summaryBar}>
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryCount, { color: Colors.success }]}>{requestedPinIds.length}</Text>
@@ -321,13 +320,10 @@ export default function CounterOfferScreen() {
             </View>
           </View>
 
-          {/* Their pins */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionDot, { backgroundColor: Colors.success }]} />
-              <Text style={styles.sectionTitle}>
-                Pins from @{otherUser?.username} — select what you want
-              </Text>
+              <Text style={styles.sectionTitle}>Pins from @{otherUser?.username} — select what you want</Text>
             </View>
             {otherUserPins.length === 0 ? (
               <View style={styles.emptyState}>
@@ -340,13 +336,10 @@ export default function CounterOfferScreen() {
             )}
           </View>
 
-          {/* My pins */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionDot, { backgroundColor: Colors.error }]} />
-              <Text style={styles.sectionTitle}>
-                Your pins — select what you'll offer
-              </Text>
+              <Text style={styles.sectionTitle}>Your pins — select what you'll offer</Text>
             </View>
             {myPins.length === 0 ? (
               <View style={styles.emptyState}>
@@ -361,7 +354,6 @@ export default function CounterOfferScreen() {
 
         </ScrollView>
 
-        {/* Submit */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + Theme.spacing.md }]}>
           <TouchableOpacity
             style={[styles.submitBtn, (requestedPinIds.length === 0 || offeredPinIds.length === 0) && styles.submitBtnDisabled]}
