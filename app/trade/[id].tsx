@@ -54,11 +54,6 @@ const SHIPPING_METHODS = [
   { value: 'tracked_insured', label: 'Tracked & Insured' },
 ];
 
-const [messages, setMessages] = useState<any[]>([]);
-const [newMessage, setNewMessage] = useState('');
-const [sendingMessage, setSendingMessage] = useState(false);
-const messagesEndRef = useRef<any>(null);
-
 interface PinWithImage extends CollectionPin {
   imageUrl?: string | null;
 }
@@ -79,6 +74,12 @@ export default function TradeDetailScreen() {
   const [carrier, setCarrier] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingMethod, setShippingMethod] = useState('standard');
+
+  
+const [messages, setMessages] = useState<any[]>([]);
+const [newMessage, setNewMessage] = useState('');
+const [sendingMessage, setSendingMessage] = useState(false);
+const messagesEndRef = useRef<any>(null);
 
 useEffect(() => {
   if (id) {
@@ -149,14 +150,10 @@ useEffect(() => {
 
     if (!data) return [];
 
-    const pinsWithImages = await Promise.all(
-      (data as CollectionPin[]).map(async (pin) => {
-        const imageUrl = pin.my_image_path
-          ? await getPinImageUrl(pin.my_image_path)
-          : null;
-        return { ...pin, imageUrl };
-      })
-    );
+    const pinsWithImages = (data as CollectionPin[]).map((pin) => ({
+      ...pin,
+      imageUrl: pin.my_image_path ? getPinImageUrl(pin.my_image_path) : null,
+    }));
 
     return pinsWithImages;
   };
