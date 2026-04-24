@@ -200,11 +200,7 @@ export default function CounterOfferScreen() {
             });
 
             setIsSubmitting(false);
-            Alert.alert(
-              'Counter offer sent! 🔄',
-              `Your counter offer has been sent to @${otherUser?.username}. You'll be notified when they respond.`,
-              [{ text: 'View trade', onPress: () => setTimeout(() => router.replace(`/trade/${trade_id}` as any), 150) }]
-            );
+            setTimeout(() => router.replace(`/trade/${trade_id}` as any), 300);
           },
         },
       ]
