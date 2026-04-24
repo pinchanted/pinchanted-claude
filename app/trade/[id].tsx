@@ -413,8 +413,12 @@ export default function TradeDetailScreen() {
 
   const renderUserCard = (user: any, label: string, isYou: boolean) => (
     <View style={styles.userCard}>
-      <View style={styles.userAvatar}>
-        <Text style={styles.userAvatarText}>{getUserInitial(user)}</Text>
+<View style={styles.userAvatar}>
+        {user?.avatar_url ? (
+          <Image source={{ uri: user.avatar_url }} style={styles.userAvatarImage} resizeMode="cover" />
+        ) : (
+          <Text style={styles.userAvatarText}>{getUserInitial(user)}</Text>
+        )}
       </View>
       <View style={styles.userInfo}>
         <Text style={styles.userLabel}>{label}</Text>
@@ -1118,4 +1122,5 @@ const styles = StyleSheet.create({
     paddingVertical: Theme.spacing.sm,
   },
   disputeBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
+  userAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
 });
