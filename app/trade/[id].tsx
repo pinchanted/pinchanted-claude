@@ -3,7 +3,7 @@
 // app/trade/[id].tsx
 // ============================================================
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,13 +15,15 @@ import {
   TextInput,
   Image,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/stores/auth.store';
-import { supabase, getPinImageUrl, updateTradeStatus } from '../../src/lib/supabase';
+import { supabase, getPinImageUrl, updateTradeStatus, getTradeMessages, sendTradeMessage, subscribeToTradeMessages } from '../../src/lib/supabase';
 import { sendNotification } from '../../src/lib/sendNotification';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
@@ -52,6 +54,11 @@ const SHIPPING_METHODS = [
   { value: 'tracked_insured', label: 'Tracked & Insured' },
 ];
 
+const [messages, setMessages] = useState<any[]>([]);
+const [newMessage, setNewMessage] = useState('');
+const [sendingMessage, setSendingMessage] = useState(false);
+const messagesEndRef = useRef<any>(null);
+
 interface PinWithImage extends CollectionPin {
   imageUrl?: string | null;
 }
@@ -73,9 +80,12 @@ export default function TradeDetailScreen() {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingMethod, setShippingMethod] = useState('standard');
 
-  useEffect(() => {
-    if (id) fetchTrade();
-  }, [id]);
+useEffect(() => {
+  if (id) {
+    fetchTrade();
+    fetchMessages();
+  }
+}, [id]);
 
   const fetchTrade = async () => {
     setIsLoading(true);
@@ -110,6 +120,20 @@ export default function TradeDetailScreen() {
     setRequestedPins(requestedData);
     setIsLoading(false);
   };
+
+  const fetchMessages = async () => {
+  const { data } = await getTradeMessages(id);
+  if (data) setMessages(data);
+};
+
+useEffect(() => {
+  if (!id) return;
+  const sub = subscribeToTradeMessages(id, async () => {
+    const { data } = await getTradeMessages(id);
+    if (data) setMessages(data);
+  });
+  return () => { supabase.removeChannel(sub); };
+}, [id]);
 
   const fetchPins = async (pinIds: string[]): Promise<PinWithImage[]> => {
     if (!pinIds.length) return [];
@@ -324,6 +348,28 @@ export default function TradeDetailScreen() {
       ]
     );
   };
+
+  const handleSendMessage = async () => {
+  if (!newMessage.trim() || !profile?.id) return;
+  setSendingMessage(true);
+  const text = newMessage.trim();
+  setNewMessage('');
+  const { data, error } = await sendTradeMessage(id, profile.id, text);
+  if (error) {
+    setNewMessage(text);
+    Alert.alert('Error', 'Could not send message. Please try again.');
+  } else if (data) {
+    setMessages(prev => [...prev, data]);
+    const otherUserId = trade?.initiator_id === profile.id
+      ? trade!.recipient_id
+      : trade!.initiator_id;
+    await sendNotification('trade_message' as any, otherUserId, {
+      from_username: profile.username,
+      trade_id: id,
+    });
+  }
+  setSendingMessage(false);
+};
 
   const handleDispute = () => {
     Alert.alert(
@@ -844,6 +890,58 @@ export default function TradeDetailScreen() {
             </View>
           )}
 
+{/* Messages */}
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Messages</Text>
+  <View style={styles.messagesCard}>
+    {messages.length === 0 ? (
+      <Text style={styles.noMessages}>No messages yet. Start the conversation!</Text>
+    ) : (
+      messages.map((msg) => {
+        const isMe = msg.sender_id === profile?.id;
+        return (
+          <View key={msg.id} style={[styles.messageBubble, isMe ? styles.messageBubbleMe : styles.messageBubbleThem]}>
+            {!isMe && (
+              <View style={styles.messageAvatar}>
+                {msg.sender?.avatar_url ? (
+                  <Image source={{ uri: msg.sender.avatar_url }} style={styles.messageAvatarImage} resizeMode="cover" />
+                ) : (
+                  <Text style={styles.messageAvatarText}>{msg.sender?.display_name?.[0]?.toUpperCase() || '?'}</Text>
+                )}
+              </View>
+            )}
+            <View style={[styles.messageBubbleContent, isMe ? styles.messageBubbleContentMe : styles.messageBubbleContentThem]}>
+              <Text style={[styles.messageText, isMe ? styles.messageTextMe : styles.messageTextThem]}>{msg.message}</Text>
+              <Text style={styles.messageTime}>{getTimeAgo(msg.created_at)}</Text>
+            </View>
+          </View>
+        );
+      })
+    )}
+  </View>
+  <View style={styles.messageInputRow}>
+    <TextInput
+      style={styles.messageInput}
+      value={newMessage}
+      onChangeText={setNewMessage}
+      placeholder="Send a message..."
+      placeholderTextColor={Colors.textPlaceholder}
+      multiline
+      maxLength={500}
+    />
+    <TouchableOpacity
+      style={[styles.messageSendBtn, !newMessage.trim() && styles.messageSendBtnDisabled]}
+      onPress={handleSendMessage}
+      disabled={!newMessage.trim() || sendingMessage}
+    >
+      {sendingMessage ? (
+        <ActivityIndicator size="small" color="#fff" />
+      ) : (
+        <AntDesign name="arrow-right" size={18} color="#fff" />
+      )}
+    </TouchableOpacity>
+  </View>
+</View>
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -1123,4 +1221,24 @@ const styles = StyleSheet.create({
   },
   disputeBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
   userAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
+
+  messagesCard: { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.sm, gap: Theme.spacing.sm, minHeight: 60 },
+  noMessages: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, textAlign: 'center', padding: Theme.spacing.md },
+  messageBubble: { flexDirection: 'row', alignItems: 'flex-end', gap: Theme.spacing.xs },
+  messageBubbleMe: { flexDirection: 'row-reverse' },
+  messageBubbleThem: { flexDirection: 'row' },
+  messageAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.royalBlue, borderWidth: 1, borderColor: Colors.goldBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  messageAvatarImage: { width: '100%' as const, height: '100%' as const, borderRadius: 14 },
+  messageAvatarText: { fontSize: 11, fontWeight: '500' as const, color: Colors.gold },
+  messageBubbleContent: { maxWidth: '75%' as const, borderRadius: Theme.radius.md, padding: Theme.spacing.sm, gap: 4 },
+  messageBubbleContentMe: { backgroundColor: Colors.crimson, borderBottomRightRadius: 4 },
+  messageBubbleContentThem: { backgroundColor: 'rgba(255,255,255,0.08)', borderBottomLeftRadius: 4 },
+  messageText: { fontSize: Theme.fontSize.sm, lineHeight: 20 },
+  messageTextMe: { color: '#fff' },
+  messageTextThem: { color: Colors.textPrimary },
+  messageTime: { fontSize: 10, color: 'rgba(255,255,255,0.4)' as const, alignSelf: 'flex-end' as const },
+  messageInputRow: { flexDirection: 'row', gap: Theme.spacing.sm, alignItems: 'flex-end' as const },
+  messageInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.md, paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.md, maxHeight: 100 },
+  messageSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.crimson, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1, borderColor: Colors.goldBorder },
+  messageSendBtnDisabled: { opacity: 0.4 },
 });

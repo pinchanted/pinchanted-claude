@@ -538,3 +538,57 @@ export const uploadAvatarImage = async (
     return null;
   }
 };
+// ============================================================
+// TRADE MESSAGES
+// ============================================================
+
+export const getTradeMessages = async (tradeId: string) => {
+  const { data, error } = await supabase
+    .from('trade_messages')
+    .select(`
+      *,
+      sender:profiles!sender_id(
+        id, username, display_name, avatar_url
+      )
+    `)
+    .eq('trade_id', tradeId)
+    .order('created_at', { ascending: true });
+  return { data, error };
+};
+
+export const sendTradeMessage = async (
+  tradeId: string,
+  senderId: string,
+  message: string
+) => {
+  const { data, error } = await supabase
+    .from('trade_messages')
+    .insert({ trade_id: tradeId, sender_id: senderId, message })
+    .select(`
+      *,
+      sender:profiles!sender_id(
+        id, username, display_name, avatar_url
+      )
+    `)
+    .single();
+  return { data, error };
+};
+
+export const subscribeToTradeMessages = (
+  tradeId: string,
+  callback: (payload: unknown) => void
+) => {
+  return supabase
+    .channel(`trade_messages:${tradeId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'trade_messages',
+        filter: `trade_id=eq.${tradeId}`,
+      },
+      callback
+    )
+    .subscribe();
+};
