@@ -360,10 +360,10 @@ useEffect(() => {
     Alert.alert('Error', 'Could not send message. Please try again.');
   } else if (data) {
     setMessages(prev => [...prev, data]);
-    const otherUserId = trade?.initiator_id === profile.id
+    const msgOtherUserId = trade?.initiator_id === profile.id
       ? trade!.recipient_id
       : trade!.initiator_id;
-    await sendNotification('trade_message' as any, otherUserId, {
+    await sendNotification('trade_message' as any, msgOtherUserId, {
       from_username: profile.username,
       trade_id: id,
     });
