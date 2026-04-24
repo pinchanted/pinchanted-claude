@@ -9,16 +9,17 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
-import { supabase } from '../../src/lib/supabase';
+import { supabase, getPinImageUrl } from '../../src/lib/supabase';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
 import { Trade, TradeStatus } from '../../src/types/database.types';
@@ -105,16 +106,24 @@ const COMPLETED_STATUSES = [
 export default function TradesScreen() {
   const { profile } = useAuthStore();
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [pinImageUrls, setPinImageUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('active');
 
   useEffect(() => {
+    if (!profile?.id) {
+      setIsLoading(false);
+      return;
+    }
     fetchTrades();
-  }, [activeTab]);
+  }, [profile?.id, activeTab]);
 
   const fetchTrades = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
 
     const statuses = activeTab === 'active'
@@ -138,6 +147,30 @@ export default function TradesScreen() {
 
     if (!error && data) {
       setTrades(data as Trade[]);
+
+      // Load pin images for all pin IDs across all trades
+      const allPinIds = (data as Trade[]).flatMap(t => [
+        ...(t.offered_pin_ids || []),
+        ...(t.requested_pin_ids || []),
+      ]);
+
+      if (allPinIds.length) {
+        const { data: pins } = await supabase
+          .from('collection_pins')
+          .select('id, my_image_path')
+          .in('id', allPinIds);
+
+        if (pins) {
+          const urls: Record<string, string> = {};
+          pins.forEach((pin: any) => {
+            if (pin.my_image_path) {
+              const url = getPinImageUrl(pin.my_image_path);
+              if (url) urls[pin.id] = url;
+            }
+          });
+          setPinImageUrls(urls);
+        }
+      }
     }
     setIsLoading(false);
   };
@@ -230,9 +263,17 @@ export default function TradesScreen() {
         {/* Top row */}
         <View style={styles.tradeTop}>
           <View style={styles.tradeAvatar}>
-            <Text style={styles.tradeAvatarText}>
-              {getUserInitial(otherUser)}
-            </Text>
+            {otherUser?.avatar_url ? (
+              <Image
+                source={{ uri: otherUser.avatar_url }}
+                style={styles.tradeAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.tradeAvatarText}>
+                {getUserInitial(otherUser)}
+              </Text>
+            )}
           </View>
           <View style={styles.tradeInfo}>
             <Text style={styles.tradeUsername} numberOfLines={1}>
@@ -255,9 +296,17 @@ export default function TradesScreen() {
         {/* Pin preview */}
         <View style={styles.pinPreview}>
           <View style={styles.pinThumbs}>
-            {(item.offered_pin_ids?.slice(0, 2) || []).map((_, i) => (
+            {(item.offered_pin_ids?.slice(0, 2) || []).map((pinId, i) => (
               <View key={i} style={styles.pinThumb}>
-                <Text style={styles.pinThumbEmoji}>📌</Text>
+                {pinImageUrls[pinId] ? (
+                  <Image
+                    source={{ uri: pinImageUrls[pinId] }}
+                    style={styles.pinThumbImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={styles.pinThumbEmoji}>📌</Text>
+                )}
               </View>
             ))}
             {(item.offered_pin_ids?.length || 0) > 2 && (
@@ -272,9 +321,17 @@ export default function TradesScreen() {
             <AntDesign name="swap" size={14} color="rgba(255,255,255,0.3)" />
           </View>
           <View style={styles.pinThumbs}>
-            {(item.requested_pin_ids?.slice(0, 2) || []).map((_, i) => (
+            {(item.requested_pin_ids?.slice(0, 2) || []).map((pinId, i) => (
               <View key={i} style={styles.pinThumb}>
-                <Text style={styles.pinThumbEmoji}>📌</Text>
+                {pinImageUrls[pinId] ? (
+                  <Image
+                    source={{ uri: pinImageUrls[pinId] }}
+                    style={styles.pinThumbImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={styles.pinThumbEmoji}>📌</Text>
+                )}
               </View>
             ))}
           </View>
@@ -543,6 +600,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  tradeAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
   tradeAvatarText: {
     fontSize: Theme.fontSize.md,
     fontWeight: '500',
@@ -593,6 +655,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,197,24,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pinThumbImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 6,
   },
   pinThumbEmoji: {
     fontSize: 18,

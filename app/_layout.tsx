@@ -1,8 +1,18 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-url-polyfill/auto';
+import { useAuthStore } from '../src/stores/auth.store';
 
 export default function RootLayout() {
+  const { initialize } = useAuthStore();
+
+  useEffect(() => {
+    initialize();
+    // Warm up withoutbg Docker instance on app launch
+    fetch('https://bg.pinchanted.ca/api/health').catch(() => {});
+  }, []);
+
   return (
     <>
       <StatusBar style="light" />
@@ -13,7 +23,11 @@ export default function RootLayout() {
         <Stack.Screen name="(onboarding)/step-1" />
         <Stack.Screen name="(onboarding)/step-2" />
         <Stack.Screen name="(onboarding)/step-3" />
-        <Stack.Screen name="paywall" />
+        <Stack.Screen
+          name="paywall"
+          options={{ presentation: 'modal' }}
+        />
+        <Stack.Screen name="reset-password" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="pin/[id]" />
         <Stack.Screen name="pin/add" />
@@ -26,6 +40,7 @@ export default function RootLayout() {
         <Stack.Screen name="admin/users" />
         <Stack.Screen name="admin/pins" />
         <Stack.Screen name="admin/trades" />
+        <Stack.Screen name="notifications" />
       </Stack>
     </>
   );

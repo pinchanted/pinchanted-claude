@@ -18,6 +18,12 @@ export interface PinMatch {
   release_date: string | null;
   confidence: number;
   description: string;
+  // Reference pin fields — populated when a database match is found
+  reference_pin_id?: string | null;
+  reference_image_url?: string | null;
+  source_url?: string | null;
+  source_site?: string | null;
+  similarity_score?: number | null;
 }
 
 export interface IdentifyPinResult {

@@ -36,6 +36,7 @@ export interface Profile {
   display_name: string;
   avatar_url: string | null;
   avatar_style: string;
+  cell_phone: string | null;
   collecting_experience: CollectingExperience | null;
   collecting_style: CollectingStyle[];
   favourite_themes: string[];

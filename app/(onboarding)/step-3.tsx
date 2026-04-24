@@ -13,16 +13,19 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
-import { updateProfile } from '../../src/lib/supabase';
+import { updateProfile, supabase } from '../../src/lib/supabase';
 import { useAuthStore } from '../../src/stores/auth.store';
+import { getCurrentUserId, setCurrentSession } from '../../src/lib/auth';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
 import { PIN_THEMES, DISNEY_PARKS } from '../../src/types/database.types';
 
 export default function OnboardingStep3() {
+  const insets = useSafeAreaInsets();
   const { profile, refreshProfile } = useAuthStore();
   const [selectedThemes, setSelectedThemes] = useState<string[]>(
     profile?.favourite_themes || []
@@ -40,6 +43,18 @@ export default function OnboardingStep3() {
     );
   };
 
+  const getUserId = async (): Promise<string | null> => {
+    let userId = getCurrentUserId() || profile?.id;
+    if (!userId) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setCurrentSession(session);
+        userId = session.user.id;
+      }
+    }
+    return userId || null;
+  };
+
   const handleFinish = async () => {
     if (selectedThemes.length === 0) {
       Alert.alert(
@@ -50,11 +65,20 @@ export default function OnboardingStep3() {
     }
 
     setIsLoading(true);
-    const { error } = await updateProfile(profile!.id, {
+
+    const userId = await getUserId();
+    if (!userId) {
+      Alert.alert('Error', 'Could not find user. Please sign in again.');
+      setIsLoading(false);
+      return;
+    }
+
+    const { error } = await updateProfile(userId, {
       favourite_themes: selectedThemes,
       favourite_park: selectedPark,
       collecting_experience: profile?.collecting_experience || 'under-1',
     });
+
     setIsLoading(false);
 
     if (error) {
@@ -63,7 +87,8 @@ export default function OnboardingStep3() {
     }
 
     await refreshProfile();
-    router.replace('/(tabs)');
+    // Show paywall after onboarding — user must subscribe to continue
+    router.replace('/paywall');
   };
 
   return (
@@ -72,11 +97,10 @@ export default function OnboardingStep3() {
       style={styles.container}
     >
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 60 + insets.top }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-
         {/* Progress bar */}
         <View style={styles.progressContainer}>
           <View style={styles.progressBar}>
@@ -112,11 +136,7 @@ export default function OnboardingStep3() {
                   onPress={() => toggleTheme(theme)}
                 >
                   {isSelected && (
-                    <AntDesign
-                      name="check"
-                      size={11}
-                      color={Colors.gold}
-                    />
+                    <AntDesign name="check" size={11} color={Colors.gold} />
                   )}
                   <Text style={[
                     styles.themeChipText,
@@ -204,20 +224,13 @@ export default function OnboardingStep3() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     padding: Theme.screenPadding,
-    paddingTop: 60,
     gap: Theme.spacing.xl,
   },
-
-  // Progress
-  progressContainer: {
-    gap: Theme.spacing.xs,
-  },
+  progressContainer: { gap: Theme.spacing.xs },
   progressBar: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -234,15 +247,11 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'right',
   },
-
-  // Header
   header: {
     alignItems: 'center',
     gap: Theme.spacing.sm,
   },
-  emoji: {
-    fontSize: 48,
-  },
+  emoji: { fontSize: 48 },
   title: {
     fontSize: Theme.fontSize.xxl,
     fontWeight: '500',
@@ -255,8 +264,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-
-  // Card
   card: {
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 0.5,
@@ -275,8 +282,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: -Theme.spacing.xs,
   },
-
-  // Theme chips
   themeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -305,11 +310,7 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     fontWeight: '500',
   },
-
-  // Parks
-  parkList: {
-    gap: Theme.spacing.sm,
-  },
+  parkList: { gap: Theme.spacing.sm },
   parkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -333,8 +334,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontWeight: '500',
   },
-
-  // Buttons
   buttonRow: {
     flexDirection: 'row',
     gap: Theme.spacing.md,
@@ -373,8 +372,6 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.md,
     fontWeight: '500',
   },
-
-  // Skip hint
   skipHint: {
     fontSize: Theme.fontSize.xs,
     color: Colors.textFaint,

@@ -11,33 +11,42 @@
       "resizeMode": "contain",
       "backgroundColor": "#0b1554"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.pinchanted.app",
-      "buildNumber": "1",
+      "bundleIdentifier": "ca.pinchanted.claude",
       "infoPlist": {
         "NSCameraUsageDescription": "Pinchanted uses your camera to photograph pins for AI identification.",
         "NSPhotoLibraryUsageDescription": "Pinchanted accesses your photo library so you can upload pin images.",
         "NSPhotoLibraryAddUsageDescription": "Pinchanted saves pin images to your photo library.",
         "softwareKeyboardLayoutMode": "pan",
-"navigationBarColor": "#08103d",
-"edgeToEdgeEnabled": true
+        "navigationBarColor": "#08103d",
+        "edgeToEdgeEnabled": true,
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.pinchanted.app",
-      "versionCode": 1,
+      "package": "ca.pinchanted.claude",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0b1554"
       },
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -66,6 +75,12 @@
       "eas": {
         "projectId": "a94cd50a-7cb7-41b2-9504-3e6ab7c62a13"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a94cd50a-7cb7-41b2-9504-3e6ab7c62a13"
     }
   }
 }

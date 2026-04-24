@@ -10,9 +10,8 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
-  Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
@@ -28,8 +27,10 @@ interface HomeStats {
   wishlistCount: number;
 }
 
+
+
 export default function HomeScreen() {
-  const { profile, signOut } = useAuthStore();
+  const { profile } = useAuthStore();
   const [stats, setStats] = useState<HomeStats>({
     totalPins: 0,
     totalValue: 0,
@@ -37,9 +38,11 @@ export default function HomeScreen() {
     wishlistCount: 0,
   });
 
-useEffect(() => {
-  fetchStats();
-}, []);
+  useEffect(() => {
+    if (profile?.id) {
+      fetchStats();
+    }
+  }, [profile?.id]);
 
   const fetchStats = async () => {
     if (!profile?.id) return;
@@ -47,7 +50,8 @@ useEffect(() => {
     const { data: pins } = await supabase
       .from('collection_pins')
       .select('my_purchase_price')
-      .eq('user_id', profile.id);
+      .eq('user_id', profile.id)
+      .eq('is_deleted', false);
 
     const { count: tradeCount } = await supabase
       .from('trades')
@@ -59,7 +63,8 @@ useEffect(() => {
       .from('collection_pins')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', profile.id)
-      .eq('is_wishlisted', true);
+      .eq('is_wishlisted', true)
+      .eq('is_deleted', false);
 
     const totalPins = pins?.length || 0;
     const totalValue = pins?.reduce((sum, pin) =>
@@ -113,7 +118,7 @@ useEffect(() => {
             </View>
             <TouchableOpacity
               style={styles.avatarButton}
-              onPress={() => router.push('/profile/index')}
+              onPress={() => router.push('/profile/')}
             >
               <View style={styles.avatar}>
                 <Text style={styles.avatarEmoji}>{getAvatarEmoji()}</Text>
@@ -300,14 +305,6 @@ useEffect(() => {
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Sign out — temporary for testing */}
-          <TouchableOpacity
-            style={styles.signOutButton}
-            onPress={signOut}
-          >
-            <Text style={styles.signOutText}>Sign out</Text>
-          </TouchableOpacity>
 
         </ScrollView>
 
@@ -561,16 +558,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: Theme.fontSize.sm,
     color: Colors.textPrimary,
-  },
-
-  // Sign out
-  signOutButton: {
-    alignItems: 'center',
-    padding: Theme.spacing.md,
-  },
-  signOutText: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.textMuted,
   },
 
   // FAB

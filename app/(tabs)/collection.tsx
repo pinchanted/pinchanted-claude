@@ -11,12 +11,12 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   ActivityIndicator,
   RefreshControl,
   Image
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
@@ -53,7 +53,7 @@ const PinImage = ({
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    getPinImageUrl(path).then(setUrl);
+    setUrl(getPinImageUrl(path));
   }, [path]);
 
   if (!url) return <Text style={{ fontSize: 32 }}>📌</Text>;
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: 'rgba(15,29,110,0.95)',
     padding: Theme.screenPadding,
-    paddingTop: Theme.spacing.xl,
+    paddingTop: Theme.spacing.md,
     gap: Theme.spacing.md,
     borderBottomWidth: 0.5,
     borderBottomColor: 'rgba(245,197,24,0.12)',

@@ -5,9 +5,29 @@
 
 import { create } from 'zustand';
 import { router } from 'expo-router';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { supabase, getProfile } from '../lib/supabase';
 import { Profile } from '../types/database.types';
+import { registerForPushNotifications } from '../lib/notifications';
+import Purchases from 'react-native-purchases';
+
+const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || '';
+const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || '';
+
+const initRevenueCat = (userId: string) => {
+  const apiKey = Platform.OS === 'ios' ? REVENUECAT_IOS_KEY : REVENUECAT_ANDROID_KEY;
+  Purchases.configure({ apiKey });
+  Purchases.logIn(userId).catch(console.warn);
+};
+
+const checkSubscription = async (): Promise<boolean> => {
+  try {
+    const info = await Purchases.getCustomerInfo();
+    return typeof info.entitlements.active['premium'] !== 'undefined';
+  } catch {
+    return false;
+  }
+};
 
 interface AuthState {
   user: any | null;
@@ -24,20 +44,27 @@ interface AuthState {
   signOut: () => Promise<void>;
 }
 
-const handlePostLoginNavigation = (
+const handlePostLoginNavigation = async (
   onboarded: boolean,
-  isNewSession: boolean
+  isNewSession: boolean,
+  hasSubscription: boolean
 ) => {
   if (onboarded) {
-    router.replace('/(tabs)');
+    // Returning onboarded user — check subscription
+    if (hasSubscription) {
+      router.replace('/(tabs)');
+    } else {
+      // Onboarded but no active subscription — show paywall
+      router.replace('/paywall');
+    }
     return;
   }
 
   if (isNewSession) {
-    // Brand new signup — go straight to onboarding
+    // Brand new signup — go to onboarding (paywall shown after step 3)
     router.replace('/(onboarding)/step-1');
   } else {
-    // Returning user who hasn't finished — ask them
+    // Returning user who hasn't finished onboarding — ask them
     Alert.alert(
       'Welcome back! 👋',
       'You haven\'t finished setting up your profile yet. Would you like to complete it now? It only takes a minute!',
@@ -45,7 +72,7 @@ const handlePostLoginNavigation = (
         {
           text: 'Maybe later',
           style: 'cancel',
-          onPress: () => router.replace('/(tabs)'),
+          onPress: () => router.replace('/paywall'),
         },
         {
           text: 'Finish setup',
@@ -78,8 +105,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           hasCompletedOnboarding: onboarded,
           isLoading: false,
         });
+
+        // Register for push notifications for returning session
+        if (profile?.id) {
+          registerForPushNotifications(profile.id).catch(console.warn);
+          initRevenueCat(profile.id);
+        }
+
+        // Check subscription status for returning user
+        const hasSub = await checkSubscription();
+        set({ hasActiveSubscription: hasSub });
+
         // Returning user from a previous session
-        handlePostLoginNavigation(onboarded, false);
+        handlePostLoginNavigation(onboarded, false, hasSub);
       } else {
         set({ isLoading: false });
         router.replace('/(auth)/login');
@@ -95,10 +133,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isAuthenticated: true,
             hasCompletedOnboarding: onboarded,
           });
+
+          // Register for push notifications on fresh sign in
+          if (profile?.id) {
+            registerForPushNotifications(profile.id).catch(console.warn);
+            initRevenueCat(profile.id);
+          }
+
+          // Check subscription status
+          const hasSub = await checkSubscription();
+          set({ hasActiveSubscription: hasSub });
+
           // Check if this is a brand new user
           const isNewUser = !profile?.collecting_experience &&
             !profile?.collecting_style?.length;
-          handlePostLoginNavigation(onboarded, isNewUser);
+          handlePostLoginNavigation(onboarded, isNewUser, hasSub);
         } else if (event === 'SIGNED_OUT') {
           set({
             user: null,

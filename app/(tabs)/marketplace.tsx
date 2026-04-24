@@ -10,16 +10,17 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
-import { supabase } from '../../src/lib/supabase';
+import { supabase, getPinImageUrl } from '../../src/lib/supabase';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
 import { MarketplaceListing } from '../../src/types/database.types';
@@ -36,6 +37,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
 export default function MarketplaceScreen() {
   const { profile } = useAuthStore();
   const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -43,11 +45,16 @@ export default function MarketplaceScreen() {
   const [wishlistPinIds, setWishlistPinIds] = useState<string[]>([]);
 
   useEffect(() => {
+    if (!profile?.id) {
+      setIsLoading(false);
+      return;
+    }
     fetchWishlistPinIds();
     fetchListings();
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
+    if (!profile?.id) return;
     fetchListings();
   }, [filter]);
 
@@ -69,7 +76,10 @@ export default function MarketplaceScreen() {
   };
 
   const fetchListings = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
 
     let query = supabase
@@ -100,7 +110,19 @@ export default function MarketplaceScreen() {
 
     const { data, error } = await query;
     if (!error && data) {
-      setListings(data as MarketplaceListing[]);
+      const active = (data as MarketplaceListing[]).filter(
+        item => !(item.collection_pin as any)?.is_deleted
+      );
+      setListings(active);
+      const urls: Record<string, string> = {};
+      active.forEach((item) => {
+        const imagePath = (item.collection_pin as any)?.my_image_path;
+        if (imagePath) {
+          const url = getPinImageUrl(imagePath);
+          if (url) urls[item.id] = url;
+        }
+      });
+      setImageUrls(urls);
     }
     setIsLoading(false);
   };
@@ -180,7 +202,15 @@ export default function MarketplaceScreen() {
 
         {/* Pin image */}
         <View style={styles.pinImageWrap}>
-          <Text style={styles.pinPlaceholder}>📌</Text>
+          {imageUrls[item.id] ? (
+            <Image
+              source={{ uri: imageUrls[item.id] }}
+              style={styles.pinImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <Text style={styles.pinPlaceholder}>📌</Text>
+          )}
         </View>
 
         {/* Pin info */}
@@ -232,6 +262,20 @@ export default function MarketplaceScreen() {
           {shippingNote ? (
             <Text style={styles.shippingNote}>{shippingNote}</Text>
           ) : null}
+
+          {/* Trade offer button */}
+          {item.open_to_trade && (
+            <TouchableOpacity
+              style={styles.offerBtn}
+              onPress={() => router.push(
+                `/trade/new?seller_id=${item.seller_id}&listing_pin_id=${item.collection_pin_id}`
+              )}
+              activeOpacity={0.7}
+            >
+              <AntDesign name="swap" size={10} color={Colors.gold} />
+              <Text style={styles.offerBtnText}>Make trade offer</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -334,7 +378,7 @@ export default function MarketplaceScreen() {
             <Text style={styles.emptyTitle}>No listings found</Text>
             <Text style={styles.emptySubtitle}>
               {filter === 'wishlist'
-                ? 'None of your wishlisted pins are currently listed. We\'ll notify you when they appear!'
+                ? "None of your wishlisted pins are currently listed. We'll notify you when they appear!"
                 : 'Check back soon — new pins are listed every day!'}
             </Text>
             {filter !== 'all' && (
@@ -371,18 +415,14 @@ export default function MarketplaceScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
 
   // Header
   header: {
     backgroundColor: 'rgba(15,29,110,0.95)',
     padding: Theme.screenPadding,
-    paddingTop: Theme.spacing.xl,
+    paddingTop: Theme.spacing.md,
     gap: Theme.spacing.md,
     borderBottomWidth: 0.5,
     borderBottomColor: 'rgba(245,197,24,0.12)',
@@ -488,9 +528,7 @@ const styles = StyleSheet.create({
     padding: Theme.screenPadding,
     gap: Theme.spacing.md,
   },
-  emptyEmoji: {
-    fontSize: 48,
-  },
+  emptyEmoji: { fontSize: 48 },
   emptyTitle: {
     fontSize: Theme.fontSize.xl,
     fontWeight: '500',
@@ -524,9 +562,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     gap: Theme.spacing.md,
   },
-  columnWrapper: {
-    gap: Theme.spacing.md,
-  },
+  columnWrapper: { gap: Theme.spacing.md },
 
   // Listing card
   listingCard: {
@@ -564,9 +600,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinPlaceholder: {
-    fontSize: 36,
+  pinImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: Theme.radius.md,
   },
+  pinPlaceholder: { fontSize: 36 },
 
   // Pin info
   pinInfo: {
@@ -625,14 +664,10 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   sellerAvatar: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 16, height: 16, borderRadius: 8,
     backgroundColor: Colors.royalBlue,
-    borderWidth: 0.5,
-    borderColor: Colors.goldBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 0.5, borderColor: Colors.goldBorder,
+    alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
   sellerAvatarText: {
@@ -651,14 +686,27 @@ const styles = StyleSheet.create({
     gap: 2,
     flexShrink: 0,
   },
-  ratingText: {
-    fontSize: 9,
-    color: Colors.gold,
-  },
+  ratingText: { fontSize: 9, color: Colors.gold },
 
   // Shipping note
-  shippingNote: {
+  shippingNote: { fontSize: 9, color: Colors.textFaint },
+
+  // Trade offer button
+  offerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: Colors.goldFaint,
+    borderWidth: 0.5,
+    borderColor: Colors.goldBorder,
+    borderRadius: Theme.radius.pill,
+    paddingVertical: 5,
+    marginTop: Theme.spacing.xs,
+  },
+  offerBtnText: {
     fontSize: 9,
-    color: Colors.textFaint,
+    color: Colors.gold,
+    fontWeight: '500',
   },
 });

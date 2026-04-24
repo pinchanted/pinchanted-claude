@@ -9,11 +9,11 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
@@ -31,10 +31,13 @@ export default function WishlistScreen() {
 
   useEffect(() => {
     fetchWishlist();
-  }, []);
+  }, [profile?.id]);
 
   const fetchWishlist = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     const { data, error } = await supabase
       .from('collection_pins')
@@ -45,6 +48,7 @@ export default function WishlistScreen() {
       `)
       .eq('user_id', profile.id)
       .eq('is_wishlisted', true)
+      .eq('is_deleted', false)
       .order('added_at', { ascending: false });
 
     if (!error && data) {
@@ -228,7 +232,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: 'rgba(15,29,110,0.95)',
     padding: Theme.screenPadding,
-    paddingTop: Theme.spacing.xl,
+    paddingTop: Theme.spacing.md,
     gap: Theme.spacing.sm,
     borderBottomWidth: 0.5,
     borderBottomColor: 'rgba(245,197,24,0.12)',

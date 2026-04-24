@@ -71,7 +71,7 @@ export const getCurrentUser = async () => {
 export const resetPassword = async (email: string) => {
   const { data, error } = await supabase.auth.resetPasswordForEmail(
     email,
-    { redirectTo: 'pinchanted://reset-password' }
+    { redirectTo: 'https://pinchanted.ca/reset-password' }
   );
   return { data, error };
 };
@@ -116,6 +116,7 @@ export const getCollection = async (userId: string) => {
       community_pin:community_pins(*)
     `)
     .eq('user_id', userId)
+    .eq('is_deleted', false)
     .order('added_at', { ascending: false });
   return { data, error };
 };
@@ -151,10 +152,37 @@ export const updateCollectionPin = async (
 };
 
 export const removeFromCollection = async (pinId: string) => {
+  // Check if pin is in any active trade — block deletion if so
+  const { data: activeTrades } = await supabase
+    .from('trades')
+    .select('id')
+    .in('status', ['pending', 'confirmed', 'arrange_shipping', 'shipping', 'delivered'])
+    .or(`offered_pin_ids.cs.{${pinId}},requested_pin_ids.cs.{${pinId}}`);
+
+  if (activeTrades?.length) {
+    return {
+      error: {
+        message: 'This pin is part of an active trade and cannot be removed until the trade is completed or cancelled.',
+      },
+      blocked: true,
+    };
+  }
+
+  // Soft delete the marketplace listing
+  await supabase
+    .from('marketplace_listings')
+    .update({ status: 'removed' })
+    .eq('collection_pin_id', pinId);
+
+  // Soft delete the pin — preserves trade history
   const { error } = await supabase
     .from('collection_pins')
-    .delete()
+    .update({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+    })
     .eq('id', pinId);
+
   return { error };
 };
 
@@ -440,15 +468,14 @@ export const uploadPinImage = async (
   }
 };
 
-export const getPinImageUrl = async (
+export const getPinImageUrl = (
   path: string | null
-): Promise<string | null> => {
+): string | null => {
   if (!path) return null;
-  const { data, error } = await supabase.storage
+  const { data } = supabase.storage
     .from('user-pins')
-    .createSignedUrl(path, 3600);
-  if (error) return null;
-  return data.signedUrl;
+    .getPublicUrl(path);
+  return data.publicUrl;
 };
 
 export const debugAuth = async () => {
@@ -457,4 +484,57 @@ export const debugAuth = async () => {
   console.log('Session:', JSON.stringify(session));
   console.log('User:', JSON.stringify(user));
   return { session, user };
+};
+
+export const uploadAvatarImage = async (
+  userId: string,
+  imageUri: string,
+  imageBase64: string
+): Promise<string | null> => {
+  try {
+    // Use the base64 already provided by the image picker — no file system needed
+    const base64 = imageBase64.includes(',')
+      ? imageBase64.split(',')[1]
+      : imageBase64;
+
+    // Pure JS base64 → Uint8Array (no Buffer, no atob, no FileSystem)
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const str = base64.replace(/=+$/, '');
+    const bytes: number[] = [];
+    let i = 0;
+    while (i < str.length) {
+      const a = chars.indexOf(str[i++]);
+      const b = chars.indexOf(str[i++]);
+      const c = i <= str.length ? chars.indexOf(str[i++]) : 0;
+      const d = i <= str.length ? chars.indexOf(str[i++]) : 0;
+      const bitmap = (a << 18) | (b << 12) | (c << 6) | d;
+      bytes.push((bitmap >> 16) & 255);
+      if (c !== -1) bytes.push((bitmap >> 8) & 255);
+      if (d !== -1) bytes.push(bitmap & 255);
+    }
+    const byteArray = new Uint8Array(bytes);
+
+    const filename = `${userId}/avatar.jpg`;
+
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(filename, byteArray, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+
+    if (error) {
+      console.error('Avatar upload error:', JSON.stringify(error));
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error('Avatar upload exception:', err);
+    return null;
+  }
 };

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "943879685030",
+    "project_id": "pinchanted-110bb",
+    "storage_bucket": "pinchanted-110bb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:943879685030:android:00923effe0dc1ee5bc0567",
+        "android_client_info": {
+          "package_name": "ca.pinchanted.claude"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_l95tTEduOcTuEsQoX9Vrpq52W_VV-HA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

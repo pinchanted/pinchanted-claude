@@ -9,17 +9,18 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   ScrollView,
   TextInput,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { writeAsStringAsync, cacheDirectory, EncodingType } from 'expo-file-system/legacy';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useCollectionStore } from '../../src/stores/collection.store';
 import { supabase, uploadPinImage } from '../../src/lib/supabase';
@@ -27,6 +28,9 @@ import { identifyPinWithClaude } from '../../src/lib/claude';
 import { getCurrentUserId, setCurrentSession } from '../../src/lib/auth';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
+
+const WITHOUTBG_URL =
+  'https://jpfrpsyrfzqlsudnzsho.supabase.co/functions/v1/remove-background';
 
 type Step = 'capture' | 'identifying' | 'results' | 'details' | 'success';
 
@@ -51,6 +55,7 @@ export default function AddPinScreen() {
   const [selectedMatch, setSelectedMatch] = useState<PinMatch | null>(null);
   const [isNotDisney, setIsNotDisney] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRemovingBackground, setIsRemovingBackground] = useState(false);
 
   const [purchasePrice, setPurchasePrice] = useState('');
   const [condition, setCondition] = useState('Mint');
@@ -100,9 +105,54 @@ export default function AddPinScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setImageUri(asset.uri);
-        setImageBase64(asset.base64 || null);
-        await identifyPinFromImage(asset.base64 || '');
+
+        // Remove background via Supabase Edge Function proxy
+        // (Direct calls to withoutbg are blocked by CORS on mobile)
+        try {
+          setIsRemovingBackground(true);
+
+          const bgResponse = await fetch(WITHOUTBG_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageBase64: asset.base64,
+              mimeType: 'image/jpeg',
+            }),
+          });
+
+          if (bgResponse.ok) {
+            const data = await bgResponse.json();
+            const bgRemovedBase64 = data.resultBase64;
+
+            if (!bgRemovedBase64) {
+              throw new Error('No result returned from background removal service');
+            }
+
+            // Write to temp file — React Native Image requires file:// URI
+            const tempPath =
+              `${cacheDirectory}pin_bg_${Date.now()}.png`;
+            await writeAsStringAsync(
+              tempPath,
+              bgRemovedBase64,
+              { encoding: EncodingType.Base64 }
+            );
+
+            setImageUri(tempPath);
+            setImageBase64(bgRemovedBase64);
+            setIsRemovingBackground(false);
+            await identifyPinFromImage(bgRemovedBase64);
+          } else {
+            const errText = await bgResponse.text();
+            throw new Error(`Background removal failed: ${bgResponse.status} ${errText}`);
+          }
+        } catch (bgError) {
+          // Background removal failed — fall back to original image
+          console.warn('Background removal failed, using original:', bgError);
+          setIsRemovingBackground(false);
+          setImageUri(asset.uri);
+          setImageBase64(asset.base64 || null);
+          await identifyPinFromImage(asset.base64 || '');
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'Could not access camera or photo library.');
@@ -165,7 +215,6 @@ export default function AddPinScreen() {
     setIsLoading(true);
 
     try {
-      // Get user ID from memory session first, then Supabase
       let userId = getCurrentUserId() || profile?.id;
 
       if (!userId) {
@@ -188,7 +237,6 @@ export default function AddPinScreen() {
         return;
       }
 
-      // Upload image
       let storedImagePath: string | null = null;
       if (imageUri && imageBase64) {
         storedImagePath = await uploadPinImage(
@@ -198,7 +246,6 @@ export default function AddPinScreen() {
         );
       }
 
-      // Create community pin
       const { data: communityPin, error: communityError } = await supabase
         .from('community_pins')
         .insert({
@@ -208,7 +255,7 @@ export default function AddPinScreen() {
           origin: selectedMatch.origin,
           original_price: selectedMatch.original_price,
           release_date: selectedMatch.release_date
-            ? `${selectedMatch.release_date}-01-01`
+            ? `${String(selectedMatch.release_date).slice(0, 4)}-01-01`
             : null,
           contributed_by: userId,
           confirmation_count: 1,
@@ -224,7 +271,6 @@ export default function AddPinScreen() {
         return;
       }
 
-      // Add to collection
       const { data: collectionPin, error: collectionError } = await supabase
         .from('collection_pins')
         .insert({
@@ -247,6 +293,19 @@ export default function AddPinScreen() {
         setIsLoading(false);
         return;
       }
+
+      // Auto-create a marketplace listing so the pin appears in the marketplace
+      await supabase
+        .from('marketplace_listings')
+        .insert({
+          seller_id: userId,
+          collection_pin_id: collectionPin.id,
+          listing_type: 'trade',
+          open_to_trade: true,
+          open_to_sale: false,
+          status: 'active',
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        });
 
       addPin(collectionPin as any);
       setStep('success');
@@ -324,20 +383,43 @@ export default function AddPinScreen() {
                   Fill the frame with the pin for best accuracy
                 </Text>
               </View>
+              <View style={styles.captureTip}>
+                <Text style={styles.captureTipEmoji}>✂️</Text>
+                <Text style={styles.captureTipText}>
+                  Background will be removed automatically for cleaner AI identification
+                </Text>
+              </View>
             </View>
+
+            {isRemovingBackground && (
+              <View style={styles.bgRemovalCard}>
+                <ActivityIndicator size="small" color={Colors.gold} />
+                <Text style={styles.bgRemovalText}>
+                  Removing background...
+                </Text>
+              </View>
+            )}
 
             <View style={styles.captureButtons}>
               <TouchableOpacity
-                style={styles.cameraButton}
+                style={[
+                  styles.cameraButton,
+                  isRemovingBackground && styles.buttonDisabled,
+                ]}
                 onPress={() => pickImage(true)}
+                disabled={isRemovingBackground}
               >
                 <AntDesign name="camera" size={24} color="#fff" />
                 <Text style={styles.cameraButtonText}>Take photo</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.libraryButton}
+                style={[
+                  styles.libraryButton,
+                  isRemovingBackground && styles.buttonDisabled,
+                ]}
                 onPress={() => pickImage(false)}
+                disabled={isRemovingBackground}
               >
                 <AntDesign name="picture" size={20} color={Colors.gold} />
                 <Text style={styles.libraryButtonText}>
@@ -348,6 +430,7 @@ export default function AddPinScreen() {
               <TouchableOpacity
                 style={styles.manualButton}
                 onPress={handleManualEntry}
+                disabled={isRemovingBackground}
               >
                 <Text style={styles.manualButtonText}>
                   Enter details manually
@@ -596,7 +679,6 @@ export default function AddPinScreen() {
               />
             )}
 
-            {/* Reference data — locked */}
             {selectedMatch && selectedMatch.confidence > 0 && (
               <View style={styles.referenceCard}>
                 <View style={styles.referenceCardHeader}>
@@ -658,7 +740,6 @@ export default function AddPinScreen() {
               </View>
             )}
 
-            {/* Manual name entry */}
             {selectedMatch && selectedMatch.confidence === 0 && (
               <View style={styles.userCard}>
                 <Text style={styles.userCardTitle}>Pin name</Text>
@@ -675,7 +756,6 @@ export default function AddPinScreen() {
               </View>
             )}
 
-            {/* User editable fields */}
             <View style={styles.userCard}>
               <Text style={styles.userCardTitle}>Your details</Text>
 
@@ -859,36 +939,28 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   captureFrameCornerTL: {
-    position: 'absolute',
-    top: 0, left: 0,
+    position: 'absolute', top: 0, left: 0,
     width: 30, height: 30,
     borderTopWidth: 2, borderLeftWidth: 2,
-    borderColor: Colors.gold,
-    borderTopLeftRadius: 4,
+    borderColor: Colors.gold, borderTopLeftRadius: 4,
   },
   captureFrameCornerTR: {
-    position: 'absolute',
-    top: 0, right: 0,
+    position: 'absolute', top: 0, right: 0,
     width: 30, height: 30,
     borderTopWidth: 2, borderRightWidth: 2,
-    borderColor: Colors.gold,
-    borderTopRightRadius: 4,
+    borderColor: Colors.gold, borderTopRightRadius: 4,
   },
   captureFrameCornerBL: {
-    position: 'absolute',
-    bottom: 0, left: 0,
+    position: 'absolute', bottom: 0, left: 0,
     width: 30, height: 30,
     borderBottomWidth: 2, borderLeftWidth: 2,
-    borderColor: Colors.gold,
-    borderBottomLeftRadius: 4,
+    borderColor: Colors.gold, borderBottomLeftRadius: 4,
   },
   captureFrameCornerBR: {
-    position: 'absolute',
-    bottom: 0, right: 0,
+    position: 'absolute', bottom: 0, right: 0,
     width: 30, height: 30,
     borderBottomWidth: 2, borderRightWidth: 2,
-    borderColor: Colors.gold,
-    borderBottomRightRadius: 4,
+    borderColor: Colors.gold, borderBottomRightRadius: 4,
   },
   captureFrameEmoji: { fontSize: 64 },
   captureFrameHint: {
@@ -921,6 +993,23 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     flex: 1,
     lineHeight: 20,
+  },
+
+  bgRemovalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Theme.spacing.sm,
+    backgroundColor: Colors.goldFaint,
+    borderWidth: 0.5,
+    borderColor: Colors.goldBorder,
+    borderRadius: Theme.radius.md,
+    padding: Theme.spacing.md,
+  },
+  bgRemovalText: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.gold,
+    fontWeight: '500',
   },
 
   captureButtons: { gap: Theme.spacing.md },
@@ -963,6 +1052,7 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.sm,
     color: Colors.textMuted,
   },
+  buttonDisabled: { opacity: 0.45 },
 
   identifyingContainer: {
     flex: 1,
@@ -972,8 +1062,7 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.xl,
   },
   identifyingImage: {
-    width: 160,
-    height: 160,
+    width: 160, height: 160,
     borderRadius: Theme.radius.lg,
     borderWidth: 2,
     borderColor: Colors.goldBorder,
@@ -1008,8 +1097,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   resultImage: {
-    width: '100%',
-    height: 200,
+    width: '100%', height: 200,
     borderRadius: Theme.radius.lg,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
@@ -1076,21 +1164,13 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.sm,
   },
   matchRank: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 24, height: 24, borderRadius: 12,
     backgroundColor: Colors.goldFaint,
-    borderWidth: 0.5,
-    borderColor: Colors.goldBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 0.5, borderColor: Colors.goldBorder,
+    alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  matchRankText: {
-    fontSize: 10,
-    color: Colors.gold,
-    fontWeight: '500',
-  },
+  matchRankText: { fontSize: 10, color: Colors.gold, fontWeight: '500' },
   matchTitleArea: { flex: 1, gap: 2 },
   matchName: {
     fontSize: Theme.fontSize.md,
@@ -1106,14 +1186,10 @@ const styles = StyleSheet.create({
   confidencePill: {
     borderRadius: Theme.radius.pill,
     borderWidth: 0.5,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 3, paddingHorizontal: 8,
     flexShrink: 0,
   },
-  confidenceText: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
+  confidenceText: { fontSize: 10, fontWeight: '500' },
   matchDescription: {
     fontSize: Theme.fontSize.sm,
     color: Colors.textMuted,
@@ -1129,13 +1205,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: Theme.radius.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
+    paddingVertical: 3, paddingHorizontal: 9,
   },
-  matchMetaText: {
-    fontSize: 10,
-    color: Colors.textSecondary,
-  },
+  matchMetaText: { fontSize: 10, color: Colors.textSecondary },
   matchConfidenceBar: { gap: 6 },
   matchConfidenceLabel: {
     fontSize: Theme.fontSize.xs,
@@ -1147,10 +1219,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     overflow: 'hidden',
   },
-  matchConfidenceFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
+  matchConfidenceFill: { height: '100%', borderRadius: 2 },
   selectButton: {
     backgroundColor: Colors.crimson,
     borderRadius: Theme.radius.pill,
@@ -1164,10 +1233,7 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.sm,
     fontWeight: '500',
   },
-  noneMatchButton: {
-    alignItems: 'center',
-    padding: Theme.spacing.md,
-  },
+  noneMatchButton: { alignItems: 'center', padding: Theme.spacing.md },
   noneMatchButtonText: {
     color: Colors.gold,
     fontSize: Theme.fontSize.sm,
@@ -1179,8 +1245,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   detailsImage: {
-    width: '100%',
-    height: 180,
+    width: '100%', height: 180,
     borderRadius: Theme.radius.lg,
     borderWidth: 1,
     borderColor: Colors.goldBorder,
@@ -1212,13 +1277,9 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: Theme.radius.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 3, paddingHorizontal: 8,
   },
-  lockedBadgeText: {
-    fontSize: 9,
-    color: Colors.textMuted,
-  },
+  lockedBadgeText: { fontSize: 9, color: Colors.textMuted },
   referenceField: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1267,10 +1328,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: Theme.fontSize.md,
   },
-  notesInput: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
+  notesInput: { height: 80, textAlignVertical: 'top' },
   priceInput: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1301,8 +1359,7 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: Theme.radius.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 6, paddingHorizontal: 12,
   },
   conditionOptionSelected: {
     backgroundColor: Colors.goldFaint,
@@ -1350,8 +1407,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   successImage: {
-    width: 160,
-    height: 160,
+    width: 160, height: 160,
     borderRadius: Theme.radius.lg,
     borderWidth: 2,
     borderColor: Colors.goldBorder,

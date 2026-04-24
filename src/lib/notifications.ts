@@ -42,8 +42,16 @@ export const registerForPushNotifications = async (
   // Get the push token
   const token = await Notifications.getExpoPushTokenAsync();
 
-  // Save to database
+  // Upsert token — delete any existing tokens for this user first,
+  // then insert the current one. This prevents duplicate accumulation
+  // since a new token is issued on each fresh install/login.
   const platform = Platform.OS as 'ios' | 'android';
+  const { supabase } = await import('./supabase');
+  await supabase
+    .from('push_tokens')
+    .delete()
+    .eq('user_id', userId)
+    .neq('token', token.data); // keep current token if already registered
   await savePushToken(userId, token.data, platform);
 
   return token.data;
