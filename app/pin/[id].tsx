@@ -48,7 +48,7 @@ const EDITION_CONFIG: Record<string, { label: string; color: string; bg: string 
 };
 
 export default function PinDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fromMarketplace } = useLocalSearchParams<{ id: string; fromMarketplace?: string }>();
   const insets = useSafeAreaInsets();
   const { profile } = useAuthStore();
   const { fetchCollection } = useCollectionStore();
@@ -273,7 +273,7 @@ export default function PinDetailScreen() {
 
   // ── Ownership check ────────────────────────────────────────
   // Only the pin's owner can edit details, manage listings, or remove it
-  const isOwner = pin.user_id === profile?.id;
+  const isOwner = pin.user_id === profile?.id && fromMarketplace !== 'true';
 
   const name = pin.reference_pin?.name || pin.community_pin?.name || 'Unknown Pin';
   const series = pin.reference_pin?.series_name || pin.community_pin?.series_name || null;

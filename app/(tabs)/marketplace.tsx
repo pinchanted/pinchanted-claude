@@ -187,7 +187,7 @@ export default function MarketplaceScreen() {
     return (
       <TouchableOpacity
         style={[styles.listingCard, isMatch && styles.listingCardMatch]}
-        onPress={() => router.push(`/pin/${item.collection_pin_id}`)}
+        onPress={() => router.push(`/pin/${item.collection_pin_id}?fromMarketplace=true` as any)}
         activeOpacity={0.7}
       >
         {/* Wishlist match banner */}
