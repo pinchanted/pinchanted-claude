@@ -160,6 +160,13 @@ useFocusEffect(
                 </View>
                 <Text style={styles.quickActionLabel}>Wishlist</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/share-collection' as any)}>
+          <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(24,119,242,0.12)' }]}>
+            <AntDesign name="facebook" size={20} color="#1877F2" />
+          </View>
+          <Text style={styles.quickActionLabel}>Share</Text>
+        </TouchableOpacity>
             </View>
           </View>
 
@@ -351,10 +358,7 @@ const styles = StyleSheet.create({
   },
 
   // Quick actions
-  quickActions: {
-    flexDirection: 'row',
-    gap: Theme.spacing.sm,
-  },
+quickActions: { flexDirection: 'row', gap: Theme.spacing.sm, flexWrap: 'wrap' },
   quickAction: {
     flex: 1,
     alignItems: 'center',
