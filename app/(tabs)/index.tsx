@@ -60,11 +60,9 @@ useFocusEffect(
       .not('status', 'in', '("completed","declined","expired")');
 
     const { count: wishlistCount } = await supabase
-      .from('collection_pins')
+      .from('user_wishlist')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', profile.id)
-      .eq('is_wishlisted', true)
-      .eq('is_deleted', false);
+      .eq('user_id', profile.id);
 
     const totalPins = pins?.length || 0;
     const totalValue = pins?.reduce((sum, pin) =>

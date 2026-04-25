@@ -61,17 +61,11 @@ export default function MarketplaceScreen() {
   const fetchWishlistPinIds = async () => {
     if (!profile?.id) return;
     const { data } = await supabase
-      .from('collection_pins')
-      .select('reference_pin_id, community_pin_id')
-      .eq('user_id', profile.id)
-      .eq('is_wishlisted', true);
-
+      .from('user_wishlist')
+      .select('collection_pin_id')
+      .eq('user_id', profile.id);
     if (data) {
-      const ids = data.flatMap(p => [
-        p.reference_pin_id,
-        p.community_pin_id,
-      ]).filter(Boolean) as string[];
-      setWishlistPinIds(ids);
+      setWishlistPinIds(data.map(w => w.collection_pin_id).filter(Boolean) as string[]);
     }
   };
 
@@ -143,10 +137,7 @@ export default function MarketplaceScreen() {
     listing.collection_pin?.community_pin?.series_name || '';
 
   const isWishlistMatch = (listing: MarketplaceListing) => {
-    const refId = listing.collection_pin?.reference_pin_id;
-    const commId = listing.collection_pin?.community_pin_id;
-    return (refId && wishlistPinIds.includes(refId)) ||
-           (commId && wishlistPinIds.includes(commId));
+    return wishlistPinIds.includes(listing.collection_pin_id);
   };
 
   const getFilteredListings = () => {
