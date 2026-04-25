@@ -1,16 +1,13 @@
 // ============================================================
 // PINCHANTED — Wishlist Screen
 // app/(tabs)/wishlist.tsx
-//
-// Shows pins from OTHER users that this user has wishlisted
-// from the Marketplace. Each entry links directly to the
-// specific collection_pins record the user wants.
 // ============================================================
 
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   FlatList,
@@ -50,6 +47,7 @@ export default function WishlistScreen() {
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchWishlist();
@@ -94,12 +92,10 @@ export default function WishlistScreen() {
       const com = cp?.community_pin;
       const owner = cp?.owner;
 
-      // Coalesce: override → reference_pin → community_pin
       const name = cp?.override_name ?? ref?.name ?? com?.name ?? 'Unknown pin';
       const series = cp?.override_series_name ?? ref?.series_name ?? com?.series_name ?? null;
       const edition = cp?.override_edition ?? ref?.edition ?? com?.edition ?? null;
 
-      // Image: owner's photo first, then reference db image
       const rawPath = cp?.my_image_path;
       const refImg = ref?.image_url || ref?.stored_image_path || com?.image_path || null;
       const image_url = rawPath ? getPinImageUrl(rawPath) : refImg;
@@ -132,15 +128,25 @@ export default function WishlistScreen() {
     setItems(prev => prev.filter(i => i.wishlist_id !== wishlistId));
   };
 
+  const getFilteredItems = () => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.toLowerCase();
+    return items.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      item.series_name?.toLowerCase().includes(q) ||
+      item.owner_username?.toLowerCase().includes(q)
+    );
+  };
+
   const renderItem = ({ item }: { item: WishlistItem }) => {
     const editionConfig = item.edition ? EDITION_CONFIG[item.edition] : null;
     return (
-      <View style={styles.pinCard}>
-        <TouchableOpacity
-          style={styles.pinImageWrap}
-          onPress={() => router.push(`/pin/${item.collection_pin_id}?fromMarketplace=true` as any)}
-          activeOpacity={0.7}
-        >
+      <TouchableOpacity
+        style={styles.pinCard}
+        onPress={() => router.push(`/pin/${item.collection_pin_id}?fromMarketplace=true` as any)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.pinImageWrap}>
           {item.image_url ? (
             <Image source={{ uri: item.image_url }} style={styles.pinImage} resizeMode="cover" />
           ) : (
@@ -151,7 +157,7 @@ export default function WishlistScreen() {
               <Text style={[styles.editionBadgeText, { color: editionConfig.color }]}>{editionConfig.label}</Text>
             </View>
           )}
-        </TouchableOpacity>
+        </View>
 
         <View style={styles.pinInfo}>
           <Text style={styles.pinName} numberOfLines={2}>{item.name}</Text>
@@ -177,13 +183,17 @@ export default function WishlistScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
+
+  const filteredItems = getFilteredItems();
 
   return (
     <LinearGradient colors={['#0f1d6e', '#0b1554', '#08103d']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+
+        {/* Header — matches Collection and Marketplace style */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Text style={styles.headerTitle}>Wishlist</Text>
@@ -191,6 +201,26 @@ export default function WishlistScreen() {
               <Text style={styles.headerBadgeText}>{items.length} pins</Text>
             </View>
           </View>
+
+          {/* Search bar */}
+          <View style={styles.searchBar}>
+            <AntDesign name="search" size={14} color="rgba(255,255,255,0.4)" />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search your wishlist..."
+              placeholderTextColor={Colors.textPlaceholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <AntDesign name="close" size={14} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
+            )}
+          </View>
+
           <Text style={styles.headerSubtitle}>
             Pins from other collectors you want · tap to propose a trade
           </Text>
@@ -214,9 +244,18 @@ export default function WishlistScreen() {
               <Text style={styles.emptyButtonText}>Browse Marketplace</Text>
             </TouchableOpacity>
           </View>
+        ) : filteredItems.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyTitle}>No results</Text>
+            <Text style={styles.emptySubtitle}>No wishlist pins match "{searchQuery}"</Text>
+            <TouchableOpacity style={styles.emptyButton} onPress={() => setSearchQuery('')}>
+              <Text style={styles.emptyButtonText}>Clear search</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <FlatList
-            data={items}
+            data={filteredItems}
             keyExtractor={item => item.wishlist_id}
             renderItem={renderItem}
             numColumns={2}
@@ -236,11 +275,13 @@ export default function WishlistScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  header: { backgroundColor: 'rgba(15,29,110,0.95)', padding: Theme.screenPadding, paddingTop: Theme.spacing.md, gap: Theme.spacing.sm, borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
+  header: { backgroundColor: 'rgba(15,29,110,0.95)', padding: Theme.screenPadding, paddingTop: Theme.spacing.md, gap: Theme.spacing.md, borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerTitle: { fontSize: Theme.fontSize.xxl, fontWeight: '500', color: Colors.textPrimary },
   headerBadge: { backgroundColor: Colors.pinkFaint, borderWidth: 0.5, borderColor: Colors.pinkBorder, borderRadius: Theme.radius.pill, paddingVertical: 3, paddingHorizontal: 10 },
   headerBadgeText: { fontSize: Theme.fontSize.sm, color: Colors.pink },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.md, paddingHorizontal: Theme.spacing.md },
+  searchInput: { flex: 1, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.sm },
   headerSubtitle: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, lineHeight: 18 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Theme.screenPadding, gap: Theme.spacing.md },

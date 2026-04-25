@@ -76,27 +76,7 @@ useFocusEffect(
       activeTrades: tradeCount || 0,
       wishlistCount: wishlistCount || 0,
     });
-  };
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const getFirstName = () => {
-    return profile?.display_name?.split(' ')[0] || 'Collector';
-  };
-
-  const getAvatarEmoji = () => {
-    const avatarMap: Record<string, string> = {
-      castle: '🏰', star: '⭐', crown: '👑', magic: '✨',
-      mouse: '🐭', heart: '💖', rainbow: '🌈', rocket: '🚀',
-      flower: '🌸',
-    };
-    return avatarMap[profile?.avatar_style || ''] || '✨';
-  };
+  }; 
 
   return (
     <LinearGradient
@@ -109,22 +89,6 @@ useFocusEffect(
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.greeting}>{getGreeting()},</Text>
-              <Text style={styles.name}>{getFirstName()}! ✨</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.avatarButton}
-              onPress={() => router.push('/profile/')}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarEmoji}>{getAvatarEmoji()}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
 
           {/* Stats row */}
           <View style={styles.statsRow}>
@@ -336,41 +300,6 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.xl,
     paddingBottom: 100,
     gap: Theme.spacing.xl,
-  },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  headerLeft: {
-    gap: 2,
-  },
-  greeting: {
-    fontSize: Theme.fontSize.md,
-    color: Colors.textMuted,
-  },
-  name: {
-    fontSize: Theme.fontSize.xxl,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
-  avatarButton: {
-    padding: 2,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.royalBlue,
-    borderWidth: 2,
-    borderColor: Colors.gold,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarEmoji: {
-    fontSize: 22,
   },
 
   // Stats
