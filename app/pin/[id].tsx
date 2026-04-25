@@ -134,7 +134,6 @@ export default function PinDetailScreen() {
   const saveChanges = async () => {
     if (!pin) return;
     setIsSaving(true);
-
     const { error } = await updateCollectionPin(pin.id, {
       condition,
       my_purchase_price: purchasePrice ? parseFloat(purchasePrice) : null,
@@ -142,7 +141,6 @@ export default function PinDetailScreen() {
       trade_status: tradeStatus,
       is_wishlisted: isWishlisted,
     });
-
     if (error) {
       Alert.alert('Error', 'Could not save changes. Please try again.');
       setIsSaving(false);
@@ -163,7 +161,6 @@ export default function PinDetailScreen() {
     }
 
     setSavingListing(true);
-
     const payload = {
       seller_id: profile?.id,
       collection_pin_id: pin?.id,
@@ -178,10 +175,7 @@ export default function PinDetailScreen() {
 
     let error;
     if (hasListing && listingId) {
-      ({ error } = await supabase
-        .from('marketplace_listings')
-        .update(payload)
-        .eq('id', listingId));
+      ({ error } = await supabase.from('marketplace_listings').update(payload).eq('id', listingId));
     } else {
       const { error: insertError, data } = await supabase
         .from('marketplace_listings')
@@ -220,10 +214,7 @@ export default function PinDetailScreen() {
           onPress: async () => {
             const result = await removeFromCollection(pin!.id);
             if ((result as any).blocked) {
-              Alert.alert(
-                'Cannot remove pin',
-                (result as any).error.message
-              );
+              Alert.alert('Cannot remove pin', (result as any).error.message);
             } else if (result.error) {
               Alert.alert('Error', 'Could not remove pin. Please try again.');
             } else {
@@ -247,16 +238,32 @@ export default function PinDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             if (!listingId) return;
-            await supabase
-              .from('marketplace_listings')
-              .update({ status: 'removed' })
-              .eq('id', listingId);
+            await supabase.from('marketplace_listings').update({ status: 'removed' }).eq('id', listingId);
             setHasListing(false);
             setListingId(null);
           },
         },
       ]
     );
+  };
+
+  const handleWishlistToggle = async (val: boolean) => {
+    setIsWishlisted(val);
+    if (!pin || !profile?.id) return;
+    if (val) {
+      await supabase.from('wishlisted_pins').upsert({
+        user_id: profile.id,
+        reference_pin_id: pin.reference_pin_id || null,
+        community_pin_id: pin.community_pin_id || null,
+      });
+    } else {
+      await supabase
+        .from('wishlisted_pins')
+        .delete()
+        .eq('user_id', profile.id)
+        .eq(pin.reference_pin_id ? 'reference_pin_id' : 'community_pin_id',
+            pin.reference_pin_id || pin.community_pin_id);
+    }
   };
 
   if (isLoading) {
@@ -271,10 +278,8 @@ export default function PinDetailScreen() {
 
   if (!pin) return null;
 
-  // ── Ownership check ────────────────────────────────────────
-  // Only the pin's owner can edit details, manage listings, or remove it
+  // ── Ownership check ───────────────────────────────────────
   const isOwner = pin.user_id === profile?.id && fromMarketplace !== 'true';
-
   const name = pin.reference_pin?.name || pin.community_pin?.name || 'Unknown Pin';
   const series = pin.reference_pin?.series_name || pin.community_pin?.series_name || null;
   const edition = pin.reference_pin?.edition || pin.community_pin?.edition || null;
@@ -294,7 +299,6 @@ export default function PinDetailScreen() {
             <AntDesign name="left" size={18} color={Colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{name}</Text>
-          {/* Only show delete button to the pin owner */}
           {isOwner ? (
             <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveFromCollection}>
               <AntDesign name="delete" size={16} color={Colors.error} />
@@ -310,7 +314,6 @@ export default function PinDetailScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-
           {/* Pin image + core info */}
           <View style={styles.heroCard}>
             <View style={styles.imageWrap}>
@@ -322,17 +325,11 @@ export default function PinDetailScreen() {
                 </View>
               )}
               {editionConfig && (
-                <View style={[styles.editionBadge, {
-                  backgroundColor: editionConfig.bg,
-                  borderColor: editionConfig.color,
-                }]}>
-                  <Text style={[styles.editionBadgeText, { color: editionConfig.color }]}>
-                    {editionConfig.label}
-                  </Text>
+                <View style={[styles.editionBadge, { backgroundColor: editionConfig.bg, borderColor: editionConfig.color }]}>
+                  <Text style={[styles.editionBadgeText, { color: editionConfig.color }]}>{editionConfig.label}</Text>
                 </View>
               )}
             </View>
-
             <View style={styles.heroInfo}>
               <Text style={styles.pinName}>{name}</Text>
               {series && <Text style={styles.pinSeries}>{series}</Text>}
@@ -359,26 +356,22 @@ export default function PinDetailScreen() {
                   <View style={styles.metaRow}>
                     <Text style={styles.metaLabel}>Released</Text>
                     <Text style={styles.metaValue}>
-                      {new Date(releaseDate).toLocaleDateString('en-CA', {
-                        year: 'numeric', month: 'short',
-                      })}
+                      {new Date(releaseDate).toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}
                     </Text>
                   </View>
                 )}
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Added</Text>
                   <Text style={styles.metaValue}>
-                    {new Date(pin.added_at).toLocaleDateString('en-CA', {
-                      year: 'numeric', month: 'short', day: 'numeric',
-                    })}
+                    {new Date(pin.added_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
                   </Text>
                 </View>
               </View>
             </View>
           </View>
 
-          {/* ── Owner-only sections ─────────────────────────── */}
           {isOwner ? (
+            // ── Owner: full edit view ─────────────────────────
             <>
               {/* Wishlist toggle */}
               <View style={styles.section}>
@@ -388,9 +381,7 @@ export default function PinDetailScreen() {
                       <AntDesign name="heart" size={14} color={isWishlisted ? Colors.pink : Colors.textMuted} />
                       <View>
                         <Text style={styles.toggleLabel}>Wishlist</Text>
-                        <Text style={styles.toggleSubtitle}>
-                          Get notified when this pin is listed
-                        </Text>
+                        <Text style={styles.toggleSubtitle}>Get notified when this pin is listed</Text>
                       </View>
                     </View>
                     <Switch
@@ -406,7 +397,6 @@ export default function PinDetailScreen() {
               {/* My details */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>My details</Text>
-
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Condition</Text>
                   <View style={styles.segmentRow}>
@@ -416,14 +406,11 @@ export default function PinDetailScreen() {
                         style={[styles.segmentBtn, condition === c && styles.segmentBtnActive]}
                         onPress={() => setCondition(c)}
                       >
-                        <Text style={[styles.segmentBtnText, condition === c && styles.segmentBtnTextActive]}>
-                          {c}
-                        </Text>
+                        <Text style={[styles.segmentBtnText, condition === c && styles.segmentBtnTextActive]}>{c}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
-
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>My purchase price</Text>
                   <View style={styles.priceInput}>
@@ -438,7 +425,6 @@ export default function PinDetailScreen() {
                     />
                   </View>
                 </View>
-
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Notes</Text>
                   <TextInput
@@ -463,22 +449,13 @@ export default function PinDetailScreen() {
                   <View style={styles.collapseHeaderLeft}>
                     <AntDesign name="swap" size={14} color={Colors.textMuted} />
                     <Text style={styles.collapseHeaderText}>Modify Trade Status</Text>
-                    <View style={[styles.currentStatusDot, {
-                      backgroundColor: currentTradeStatus?.color || Colors.textMuted,
-                    }]} />
-                    <Text style={[styles.currentStatusLabel, {
-                      color: currentTradeStatus?.color || Colors.textMuted,
-                    }]}>
+                    <View style={[styles.currentStatusDot, { backgroundColor: currentTradeStatus?.color || Colors.textMuted }]} />
+                    <Text style={[styles.currentStatusLabel, { color: currentTradeStatus?.color || Colors.textMuted }]}>
                       {currentTradeStatus?.label}
                     </Text>
                   </View>
-                  <AntDesign
-                    name={tradeStatusExpanded ? 'up' : 'down'}
-                    size={13}
-                    color={Colors.textMuted}
-                  />
+                  <AntDesign name={tradeStatusExpanded ? 'up' : 'down'} size={13} color={Colors.textMuted} />
                 </TouchableOpacity>
-
                 {tradeStatusExpanded && (
                   <View style={styles.collapseBody}>
                     <Text style={styles.collapseWarning}>
@@ -490,24 +467,15 @@ export default function PinDetailScreen() {
                           key={option.value}
                           style={[
                             styles.tradeStatusOption,
-                            tradeStatus === option.value && {
-                              borderColor: option.color,
-                              backgroundColor: `${option.color}18`,
-                            },
+                            tradeStatus === option.value && { borderColor: option.color, backgroundColor: `${option.color}18` },
                           ]}
                           onPress={() => setTradeStatus(option.value)}
                         >
                           <View style={[
                             styles.tradeStatusRadio,
-                            tradeStatus === option.value && {
-                              borderColor: option.color,
-                              backgroundColor: option.color,
-                            },
+                            tradeStatus === option.value && { borderColor: option.color, backgroundColor: option.color },
                           ]} />
-                          <Text style={[
-                            styles.tradeStatusLabel,
-                            tradeStatus === option.value && { color: option.color },
-                          ]}>
+                          <Text style={[styles.tradeStatusLabel, tradeStatus === option.value && { color: option.color }]}>
                             {option.label}
                           </Text>
                         </TouchableOpacity>
@@ -527,7 +495,6 @@ export default function PinDetailScreen() {
                     </View>
                   )}
                 </View>
-
                 <View style={styles.card}>
                   <View style={styles.toggleRow}>
                     <View style={styles.toggleInfo}>
@@ -541,9 +508,7 @@ export default function PinDetailScreen() {
                       thumbColor={openToTrade ? Colors.success : 'rgba(255,255,255,0.4)'}
                     />
                   </View>
-
                   <View style={styles.cardDivider} />
-
                   <View style={styles.toggleRow}>
                     <View style={styles.toggleInfo}>
                       <AntDesign name="shopping-cart" size={14} color={openToSale ? Colors.gold : Colors.textMuted} />
@@ -556,7 +521,6 @@ export default function PinDetailScreen() {
                       thumbColor={openToSale ? Colors.gold : 'rgba(255,255,255,0.4)'}
                     />
                   </View>
-
                   {openToSale && (
                     <View style={styles.listingField}>
                       <Text style={styles.fieldLabel}>Asking price *</Text>
@@ -573,7 +537,6 @@ export default function PinDetailScreen() {
                       </View>
                     </View>
                   )}
-
                   <View style={styles.listingField}>
                     <Text style={styles.fieldLabel}>Listing description (optional)</Text>
                     <TextInput
@@ -587,7 +550,6 @@ export default function PinDetailScreen() {
                     />
                   </View>
                 </View>
-
                 {hasListing && (
                   <TouchableOpacity style={styles.removeListingBtn} onPress={removeListing}>
                     <Text style={styles.removeListingBtnText}>Remove listing</Text>
@@ -609,26 +571,58 @@ export default function PinDetailScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            // ── Read-only view for non-owners ──────────────────
-            <View style={styles.section}>
-              <View style={styles.card}>
-                <View style={[styles.metaRow, { padding: Theme.spacing.md }]}>
-                  <Text style={styles.metaLabel}>Condition</Text>
-                  <Text style={styles.metaValue}>{pin.condition || 'Mint'}</Text>
+            // ── Non-owner: read-only + actions ────────────────
+            <>
+              {/* Read-only pin details */}
+              <View style={styles.section}>
+                <View style={styles.card}>
+                  <View style={[styles.metaRow, { padding: Theme.spacing.md }]}>
+                    <Text style={styles.metaLabel}>Condition</Text>
+                    <Text style={styles.metaValue}>{pin.condition || 'Mint'}</Text>
+                  </View>
+                  {pin.notes ? (
+                    <>
+                      <View style={styles.cardDivider} />
+                      <View style={{ padding: Theme.spacing.md }}>
+                        <Text style={styles.metaLabel}>Owner's notes</Text>
+                        <Text style={[styles.metaValue, { marginTop: 4 }]}>{pin.notes}</Text>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
-                {pin.notes ? (
-                  <>
-                    <View style={styles.cardDivider} />
-                    <View style={{ padding: Theme.spacing.md }}>
-                      <Text style={styles.metaLabel}>Owner's notes</Text>
-                      <Text style={[styles.metaValue, { marginTop: 4 }]}>{pin.notes}</Text>
-                    </View>
-                  </>
-                ) : null}
               </View>
-            </View>
-          )}
 
+              {/* Wishlist toggle for non-owners */}
+              <View style={styles.section}>
+                <View style={styles.card}>
+                  <View style={styles.toggleRow}>
+                    <View style={styles.toggleInfo}>
+                      <AntDesign name="heart" size={14} color={isWishlisted ? Colors.pink : Colors.textMuted} />
+                      <View>
+                        <Text style={styles.toggleLabel}>Add to Wishlist</Text>
+                        <Text style={styles.toggleSubtitle}>Get notified when this pin is available to trade</Text>
+                      </View>
+                    </View>
+                    <Switch
+                      value={isWishlisted}
+                      onValueChange={handleWishlistToggle}
+                      trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(249,200,216,0.3)' }}
+                      thumbColor={isWishlisted ? Colors.pink : 'rgba(255,255,255,0.4)'}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Make trade offer */}
+              <TouchableOpacity
+                style={styles.tradeOfferBtn}
+                onPress={() => router.push(`/trade/new?recipientId=${pin.user_id}&requestedPinId=${pin.id}` as any)}
+              >
+                <AntDesign name="swap" size={16} color="#fff" />
+                <Text style={styles.tradeOfferBtnText}>Make trade offer</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -639,259 +633,65 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Theme.screenPadding,
-    paddingBottom: Theme.spacing.md,
-    backgroundColor: 'rgba(15,29,110,0.95)',
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(245,197,24,0.12)',
-  },
-  backButton: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: Theme.fontSize.lg,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    marginHorizontal: Theme.spacing.sm,
-  },
-  deleteButton: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(192,24,42,0.1)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-
+  headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Theme.screenPadding, paddingBottom: Theme.spacing.md, backgroundColor: 'rgba(15,29,110,0.95)', borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
+  backButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, fontSize: Theme.fontSize.lg, fontWeight: '500', color: Colors.textPrimary, textAlign: 'center', marginHorizontal: Theme.spacing.sm },
+  deleteButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(192,24,42,0.1)', alignItems: 'center', justifyContent: 'center' },
   scrollView: { flex: 1 },
-  scrollContent: {
-    padding: Theme.screenPadding,
-    paddingBottom: 60,
-    gap: Theme.spacing.xl,
-  },
-
-  heroCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: Colors.goldBorder,
-    borderRadius: Theme.radius.lg,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
-  imageWrap: {
-    width: 140,
-    aspectRatio: 1,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    flexShrink: 0,
-  },
+  scrollContent: { padding: Theme.screenPadding, paddingBottom: 60, gap: Theme.spacing.xl },
+  heroCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: Colors.goldBorder, borderRadius: Theme.radius.lg, overflow: 'hidden', flexDirection: 'row' },
+  imageWrap: { width: 140, aspectRatio: 1, backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 },
   pinImage: { width: '100%', height: '100%' },
-  pinImagePlaceholder: {
-    width: '100%', height: '100%',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  pinImagePlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   pinImageEmoji: { fontSize: 48 },
-  editionBadge: {
-    position: 'absolute', top: 6, left: 6,
-    borderRadius: Theme.radius.pill,
-    borderWidth: 0.5,
-    paddingVertical: 2, paddingHorizontal: 6,
-  },
+  editionBadge: { position: 'absolute', top: 6, left: 6, borderRadius: Theme.radius.pill, borderWidth: 0.5, paddingVertical: 2, paddingHorizontal: 6 },
   editionBadgeText: { fontSize: 8, fontWeight: '500' },
-  heroInfo: {
-    flex: 1,
-    padding: Theme.spacing.md,
-    gap: Theme.spacing.sm,
-  },
-  pinName: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    lineHeight: 20,
-  },
-  pinSeries: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.gold,
-    opacity: 0.75,
-  },
+  heroInfo: { flex: 1, padding: Theme.spacing.md, gap: Theme.spacing.sm },
+  pinName: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary, lineHeight: 20 },
+  pinSeries: { fontSize: Theme.fontSize.sm, color: Colors.gold, opacity: 0.75 },
   metaRows: { gap: 6 },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metaLabel: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   metaValue: { fontSize: Theme.fontSize.xs, color: Colors.textSecondary, fontWeight: '500' },
-
   section: { gap: Theme.spacing.md },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: '500',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  listedBadge: {
-    backgroundColor: Colors.successFaint,
-    borderWidth: 0.5,
-    borderColor: Colors.successBorder,
-    borderRadius: Theme.radius.pill,
-    paddingVertical: 2, paddingHorizontal: 8,
-  },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionTitle: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
+  listedBadge: { backgroundColor: Colors.successFaint, borderWidth: 0.5, borderColor: Colors.successBorder, borderRadius: Theme.radius.pill, paddingVertical: 2, paddingHorizontal: 8 },
   listedBadgeText: { fontSize: Theme.fontSize.xs, color: Colors.success, fontWeight: '500' },
-
-  card: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.md,
-    overflow: 'hidden',
-  },
-  cardDivider: {
-    height: 0.5,
-    backgroundColor: 'rgba(245,197,24,0.1)',
-    marginHorizontal: Theme.screenPadding,
-  },
-
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Theme.screenPadding,
-    gap: Theme.spacing.md,
-  },
-  toggleInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-  },
+  card: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, overflow: 'hidden' },
+  cardDivider: { height: 0.5, backgroundColor: 'rgba(245,197,24,0.1)', marginHorizontal: Theme.screenPadding },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Theme.screenPadding, gap: Theme.spacing.md },
+  toggleInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
   toggleLabel: { fontSize: Theme.fontSize.md, color: Colors.textPrimary },
   toggleSubtitle: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
-
   fieldGroup: { gap: Theme.spacing.xs },
   fieldLabel: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, fontWeight: '500' },
-  input: {
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.2)',
-    borderRadius: Theme.radius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    color: Colors.textPrimary,
-    fontSize: Theme.fontSize.md,
-  },
+  input: { backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.sm, paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.md },
   inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
-  priceInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.2)',
-    borderRadius: Theme.radius.sm,
-    paddingHorizontal: Theme.spacing.md,
-  },
+  priceInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.sm, paddingHorizontal: Theme.spacing.md },
   priceDollar: { fontSize: Theme.fontSize.md, color: Colors.textMuted, marginRight: 4 },
-  priceField: {
-    flex: 1,
-    paddingVertical: Theme.spacing.sm,
-    color: Colors.textPrimary,
-    fontSize: Theme.fontSize.md,
-  },
+  priceField: { flex: 1, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.md },
   listingField: { padding: Theme.screenPadding, gap: Theme.spacing.xs },
-
   segmentRow: { flexDirection: 'row', gap: Theme.spacing.xs },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: Theme.spacing.sm,
-    borderRadius: Theme.radius.sm,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-  },
+  segmentBtn: { flex: 1, paddingVertical: Theme.spacing.sm, borderRadius: Theme.radius.sm, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
   segmentBtnActive: { backgroundColor: Colors.goldFaint, borderColor: Colors.goldBorder },
   segmentBtnText: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   segmentBtnTextActive: { color: Colors.gold, fontWeight: '500' },
-
-  collapseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: Theme.radius.md,
-    padding: Theme.spacing.md,
-  },
-  collapseHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-    flex: 1,
-  },
-  collapseHeaderText: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
+  collapseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', borderRadius: Theme.radius.md, padding: Theme.spacing.md },
+  collapseHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm, flex: 1 },
+  collapseHeaderText: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, fontWeight: '500' },
   currentStatusDot: { width: 8, height: 8, borderRadius: 4 },
   currentStatusLabel: { fontSize: Theme.fontSize.xs },
   collapseBody: { gap: Theme.spacing.md, paddingTop: Theme.spacing.xs },
-  collapseWarning: {
-    fontSize: Theme.fontSize.xs,
-    color: Colors.textMuted,
-    lineHeight: 18,
-    backgroundColor: 'rgba(245,197,24,0.06)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.15)',
-    borderRadius: Theme.radius.sm,
-    padding: Theme.spacing.sm,
-  },
+  collapseWarning: { fontSize: Theme.fontSize.xs, color: Colors.textMuted, lineHeight: 18, backgroundColor: 'rgba(245,197,24,0.06)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.sm, padding: Theme.spacing.sm },
   tradeStatusList: { gap: Theme.spacing.sm },
-  tradeStatusOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.md,
-    padding: Theme.spacing.md,
-    borderRadius: Theme.radius.md,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  tradeStatusRadio: {
-    width: 18, height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
-  },
+  tradeStatusOption: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.md, padding: Theme.spacing.md, borderRadius: Theme.radius.md, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.04)' },
+  tradeStatusRadio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)' },
   tradeStatusLabel: { fontSize: Theme.fontSize.md, color: Colors.textMuted },
-
-  saveBtn: {
-    backgroundColor: Colors.crimson,
-    borderRadius: Theme.radius.pill,
-    paddingVertical: Theme.spacing.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-  },
+  saveBtn: { backgroundColor: Colors.crimson, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.goldBorder },
   saveBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
-  removeListingBtn: {
-    paddingVertical: Theme.spacing.sm,
-    alignItems: 'center',
-  },
+  removeListingBtn: { paddingVertical: Theme.spacing.sm, alignItems: 'center' },
   removeListingBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
+  tradeOfferBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, backgroundColor: Colors.crimson, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, borderWidth: 1, borderColor: Colors.goldBorder },
+  tradeOfferBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
 });
