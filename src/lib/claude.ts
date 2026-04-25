@@ -2,7 +2,6 @@
 // PINCHANTED — Claude API Helper
 // src/lib/claude.ts
 // ============================================================
-
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
@@ -18,12 +17,15 @@ export interface PinMatch {
   release_date: string | null;
   confidence: number;
   description: string;
-  // Reference pin fields — populated when a database match is found
+  // Set when matched to a verified database record
   reference_pin_id?: string | null;
+  community_pin_id?: string | null;
+  // Reference image from the database record (for display in results)
   reference_image_url?: string | null;
   source_url?: string | null;
   source_site?: string | null;
-  similarity_score?: number | null;
+  // Where this match came from
+  match_source?: 'reference_pins' | 'collection_pins' | 'ai_only';
 }
 
 export interface IdentifyPinResult {
@@ -49,12 +51,99 @@ const detectImageType = (
   return 'image/jpeg';
 };
 
-// Call Claude directly from web browser
+// ── Step 2: Search reference_pins for each AI-identified candidate ──────────
+// Uses ilike for fuzzy name matching. Returns the best database match per
+// candidate, attaching the reference_pin_id so add.tsx can link directly.
+const searchReferencePins = async (candidates: PinMatch[]): Promise<PinMatch[]> => {
+  const enriched: PinMatch[] = [];
+
+  for (const candidate of candidates) {
+    if (!candidate.name) {
+      enriched.push({ ...candidate, match_source: 'ai_only' });
+      continue;
+    }
+
+    // Search reference_pins by name (fuzzy)
+    const { data: refMatches } = await supabase
+      .from('reference_pins')
+      .select('id, name, series_name, edition, origin, original_price, release_date, image_url, stored_image_path, source_url, source_site')
+      .ilike('name', `%${candidate.name.replace(/'/g, "''")}%`)
+      .limit(3);
+
+    if (refMatches && refMatches.length > 0) {
+      // Best reference match — use its metadata as the authoritative source
+      const best = refMatches[0];
+      enriched.push({
+        ...candidate,
+        // Override with database metadata where available
+        name: best.name,
+        series_name: best.series_name ?? candidate.series_name,
+        edition: best.edition ?? candidate.edition,
+        origin: best.origin ?? candidate.origin,
+        original_price: best.original_price ?? candidate.original_price,
+        release_date: best.release_date ?? candidate.release_date,
+        reference_pin_id: best.id,
+        reference_image_url: best.image_url || best.stored_image_path || null,
+        source_url: best.source_url ?? null,
+        match_source: 'reference_pins',
+      });
+      continue;
+    }
+
+    // No reference_pin match — search other users' collection_pins
+    const { data: collectionMatches } = await supabase
+      .from('collection_pins')
+      .select(`
+        id,
+        community_pin_id,
+        my_image_path,
+        override_name,
+        override_series_name,
+        override_edition,
+        override_origin,
+        override_original_price,
+        override_release_date,
+        community_pin:community_pins(
+          id, name, series_name, edition, origin, original_price, release_date, image_path
+        )
+      `)
+      .ilike('community_pin.name', `%${candidate.name.replace(/'/g, "''")}%`)
+      .not('community_pin_id', 'is', null)
+      .eq('is_deleted', false)
+      .limit(3);
+
+    if (collectionMatches && collectionMatches.length > 0) {
+      const best = collectionMatches[0];
+      const cp = best.community_pin as any;
+      if (cp) {
+        enriched.push({
+          ...candidate,
+          name: best.override_name ?? cp.name ?? candidate.name,
+          series_name: best.override_series_name ?? cp.series_name ?? candidate.series_name,
+          edition: best.override_edition ?? cp.edition ?? candidate.edition,
+          origin: best.override_origin ?? cp.origin ?? candidate.origin,
+          original_price: best.override_original_price ?? cp.original_price ?? candidate.original_price,
+          release_date: best.override_release_date ?? cp.release_date ?? candidate.release_date,
+          community_pin_id: cp.id,
+          reference_image_url: cp.image_path ?? best.my_image_path ?? null,
+          match_source: 'collection_pins',
+        });
+        continue;
+      }
+    }
+
+    // No database match found — return AI-only result
+    enriched.push({ ...candidate, match_source: 'ai_only' });
+  }
+
+  return enriched;
+};
+
+// ── Call Claude directly from web browser ───────────────────────────────────
 const identifyViaDirectAPI = async (
   base64Data: string
 ): Promise<IdentifyPinResult> => {
   const mediaType = detectImageType(base64Data);
-
   const response = await fetch(CLAUDE_API_URL, {
     method: 'POST',
     headers: {
@@ -72,16 +161,9 @@ const identifyViaDirectAPI = async (
           content: [
             {
               type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64Data,
-              },
+              source: { type: 'base64', media_type: mediaType, data: base64Data },
             },
-            {
-              type: 'text',
-              text: getPrompt(),
-            },
+            { type: 'text', text: getPrompt() },
           ],
         },
       ],
@@ -94,10 +176,14 @@ const identifyViaDirectAPI = async (
   }
 
   const data = await response.json();
-  return parseClaudeResponse(data);
+  const aiResult = parseClaudeResponse(data);
+
+  // Enrich with database matches
+  const enrichedMatches = await searchReferencePins(aiResult.matches);
+  return { ...aiResult, matches: enrichedMatches };
 };
 
-// Call Claude via Supabase Edge Function (native)
+// ── Call Claude via Supabase Edge Function (native) ─────────────────────────
 const identifyViaEdgeFunction = async (
   base64Data: string
 ): Promise<IdentifyPinResult> => {
@@ -109,10 +195,16 @@ const identifyViaEdgeFunction = async (
   });
 
   if (error) throw error;
-  return data as IdentifyPinResult;
+
+  const aiResult = data as IdentifyPinResult;
+
+  // Enrich with database matches after Edge Function returns
+  const enrichedMatches = await searchReferencePins(aiResult.matches);
+  return { ...aiResult, matches: enrichedMatches };
 };
 
-const getPrompt = () => `You are an expert Disney pin collector and identifier with encyclopedic knowledge of Disney trading pins.
+const getPrompt = () =>
+  `You are an expert Disney pin collector and identifier with encyclopedic knowledge of Disney trading pins.
 
 Analyze this image and identify the Disney pin(s) shown.
 
