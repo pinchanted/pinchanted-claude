@@ -7,6 +7,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   FlatList,
@@ -26,82 +27,21 @@ import { Trade, TradeStatus } from '../../src/types/database.types';
 
 type TabType = 'active' | 'completed';
 
-const STATUS_CONFIG: Record<string, {
-  label: string;
-  color: string;
-  bg: string;
-  border: string;
-}> = {
-  pending: {
-    label: 'Pending',
-    color: Colors.gold,
-    bg: 'rgba(245,197,24,0.1)',
-    border: 'rgba(245,197,24,0.35)',
-  },
-  in_progress: {
-    label: 'In Progress',
-    color: '#93c5fd',
-    bg: 'rgba(100,160,255,0.1)',
-    border: 'rgba(100,160,255,0.35)',
-  },
-  confirmed: {
-    label: 'Confirmed',
-    color: Colors.success,
-    bg: 'rgba(93,202,122,0.1)',
-    border: 'rgba(93,202,122,0.35)',
-  },
-  arrange_shipping: {
-    label: 'Arrange Shipping',
-    color: Colors.success,
-    bg: 'rgba(93,202,122,0.1)',
-    border: 'rgba(93,202,122,0.35)',
-  },
-  shipping: {
-    label: 'Shipping',
-    color: Colors.error,
-    bg: 'rgba(192,24,42,0.1)',
-    border: 'rgba(192,24,42,0.35)',
-  },
-  delivered: {
-    label: 'Delivered',
-    color: Colors.error,
-    bg: 'rgba(192,24,42,0.1)',
-    border: 'rgba(192,24,42,0.35)',
-  },
-  completed: {
-    label: 'Completed',
-    color: Colors.success,
-    bg: 'rgba(93,202,122,0.1)',
-    border: 'rgba(93,202,122,0.35)',
-  },
-  declined: {
-    label: 'Declined',
-    color: Colors.textMuted,
-    bg: 'rgba(255,255,255,0.05)',
-    border: 'rgba(255,255,255,0.12)',
-  },
-  expired: {
-    label: 'Expired',
-    color: Colors.textMuted,
-    bg: 'rgba(255,255,255,0.05)',
-    border: 'rgba(255,255,255,0.12)',
-  },
-  disputed: {
-    label: 'Disputed',
-    color: Colors.error,
-    bg: 'rgba(192,24,42,0.1)',
-    border: 'rgba(192,24,42,0.35)',
-  },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  pending: { label: 'Pending', color: Colors.gold, bg: 'rgba(245,197,24,0.1)', border: 'rgba(245,197,24,0.35)' },
+  in_progress: { label: 'In Progress', color: '#93c5fd', bg: 'rgba(100,160,255,0.1)', border: 'rgba(100,160,255,0.35)' },
+  confirmed: { label: 'Confirmed', color: Colors.success, bg: 'rgba(93,202,122,0.1)', border: 'rgba(93,202,122,0.35)' },
+  arrange_shipping: { label: 'Arrange Shipping', color: Colors.success, bg: 'rgba(93,202,122,0.1)', border: 'rgba(93,202,122,0.35)' },
+  shipping: { label: 'Shipping', color: Colors.error, bg: 'rgba(192,24,42,0.1)', border: 'rgba(192,24,42,0.35)' },
+  delivered: { label: 'Delivered', color: Colors.error, bg: 'rgba(192,24,42,0.1)', border: 'rgba(192,24,42,0.35)' },
+  completed: { label: 'Completed', color: Colors.success, bg: 'rgba(93,202,122,0.1)', border: 'rgba(93,202,122,0.35)' },
+  declined: { label: 'Declined', color: Colors.textMuted, bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.12)' },
+  expired: { label: 'Expired', color: Colors.textMuted, bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.12)' },
+  disputed: { label: 'Disputed', color: Colors.error, bg: 'rgba(192,24,42,0.1)', border: 'rgba(192,24,42,0.35)' },
 };
 
-const ACTIVE_STATUSES = [
-  'pending', 'in_progress', 'confirmed',
-  'arrange_shipping', 'shipping', 'delivered',
-];
-
-const COMPLETED_STATUSES = [
-  'completed', 'declined', 'expired', 'disputed',
-];
+const ACTIVE_STATUSES = ['pending', 'in_progress', 'confirmed', 'arrange_shipping', 'shipping', 'delivered'];
+const COMPLETED_STATUSES = ['completed', 'declined', 'expired', 'disputed'];
 
 export default function TradesScreen() {
   const { profile } = useAuthStore();
@@ -110,36 +50,24 @@ export default function TradesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    if (!profile?.id) {
-      setIsLoading(false);
-      return;
-    }
+    if (!profile?.id) { setIsLoading(false); return; }
     fetchTrades();
   }, [profile?.id, activeTab]);
 
   const fetchTrades = async () => {
-    if (!profile?.id) {
-      setIsLoading(false);
-      return;
-    }
+    if (!profile?.id) { setIsLoading(false); return; }
     setIsLoading(true);
-
-    const statuses = activeTab === 'active'
-      ? ACTIVE_STATUSES
-      : COMPLETED_STATUSES;
+    const statuses = activeTab === 'active' ? ACTIVE_STATUSES : COMPLETED_STATUSES;
 
     const { data, error } = await supabase
       .from('trades')
       .select(`
         *,
-        initiator:profiles!initiator_id(
-          id, username, display_name, avatar_url, trade_rating
-        ),
-        recipient:profiles!recipient_id(
-          id, username, display_name, avatar_url, trade_rating
-        )
+        initiator:profiles!initiator_id(id, username, display_name, avatar_url, trade_rating),
+        recipient:profiles!recipient_id(id, username, display_name, avatar_url, trade_rating)
       `)
       .or(`initiator_id.eq.${profile.id},recipient_id.eq.${profile.id}`)
       .in('status', statuses)
@@ -147,19 +75,15 @@ export default function TradesScreen() {
 
     if (!error && data) {
       setTrades(data as Trade[]);
-
-      // Load pin images for all pin IDs across all trades
       const allPinIds = (data as Trade[]).flatMap(t => [
         ...(t.offered_pin_ids || []),
         ...(t.requested_pin_ids || []),
       ]);
-
       if (allPinIds.length) {
         const { data: pins } = await supabase
           .from('collection_pins')
           .select('id, my_image_path')
           .in('id', allPinIds);
-
         if (pins) {
           const urls: Record<string, string> = {};
           pins.forEach((pin: any) => {
@@ -186,9 +110,8 @@ export default function TradesScreen() {
     return isInitiator ? trade.recipient : trade.initiator;
   };
 
-  const getTradeDirection = (trade: Trade) => {
-    return trade.initiator_id === profile?.id ? 'Sent' : 'Received';
-  };
+  const getTradeDirection = (trade: Trade) =>
+    trade.initiator_id === profile?.id ? 'Sent' : 'Received';
 
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -197,7 +120,6 @@ export default function TradesScreen() {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
-
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays === 1) return 'Yesterday';
@@ -208,38 +130,39 @@ export default function TradesScreen() {
     if (!['pending', 'in_progress'].includes(trade.status)) return null;
     const expiry = new Date(trade.expires_at);
     const now = new Date();
-    const diffMs = expiry.getTime() - now.getTime();
-    const diffHours = Math.floor(diffMs / 3600000);
+    const diffHours = Math.floor((expiry.getTime() - now.getTime()) / 3600000);
     if (diffHours < 0) return 'Expired';
     if (diffHours < 24) return `⏱ ${diffHours}hrs left`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `⏱ ${diffDays}d left`;
+    return `⏱ ${Math.floor(diffHours / 24)}d left`;
   };
 
   const getStatusCTA = (trade: Trade) => {
-    const status = trade.status as TradeStatus;
     const isInitiator = trade.initiator_id === profile?.id;
-
-    switch (status) {
-      case 'pending':
-        return isInitiator ? 'Waiting for response' : 'Review offer →';
-      case 'in_progress':
-        return 'Negotiating →';
-      case 'confirmed':
-        return 'Arrange shipping →';
-      case 'arrange_shipping':
-        return 'Arrange shipping →';
-      case 'shipping':
-        return 'Track →';
-      case 'delivered':
-        return 'Mark received →';
-      default:
-        return 'View →';
+    switch (trade.status as TradeStatus) {
+      case 'pending': return isInitiator ? 'Waiting for response' : 'Review offer →';
+      case 'in_progress': return 'Negotiating →';
+      case 'confirmed': return 'Arrange shipping →';
+      case 'arrange_shipping': return 'Arrange shipping →';
+      case 'shipping': return 'Track →';
+      case 'delivered': return 'Mark received →';
+      default: return 'View →';
     }
   };
 
-  const getUserInitial = (user: any) =>
-    user?.display_name?.[0]?.toUpperCase() || '?';
+  const getUserInitial = (user: any) => user?.display_name?.[0]?.toUpperCase() || '?';
+
+  const getFilteredTrades = () => {
+    if (!searchQuery.trim()) return trades;
+    const q = searchQuery.toLowerCase();
+    return trades.filter(trade => {
+      const other = getOtherUser(trade) as any;
+      return (
+        other?.username?.toLowerCase().includes(q) ||
+        other?.display_name?.toLowerCase().includes(q) ||
+        trade.status.toLowerCase().includes(q)
+      );
+    });
+  };
 
   const renderTrade = ({ item }: { item: Trade }) => {
     const otherUser = getOtherUser(item) as any;
@@ -248,62 +171,38 @@ export default function TradesScreen() {
     const expiryText = getExpiryText(item);
     const statusConfig = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
     const cta = getStatusCTA(item);
-    const isActionable = ['pending', 'in_progress', 'confirmed',
-      'arrange_shipping', 'shipping', 'delivered'].includes(item.status)
-      && (item.status !== 'pending' || item.recipient_id === profile?.id);
+    const isActionable = ['pending', 'in_progress', 'confirmed', 'arrange_shipping', 'shipping', 'delivered'].includes(item.status) &&
+      (item.status !== 'pending' || item.recipient_id === profile?.id);
 
     return (
       <TouchableOpacity
-        style={[styles.tradeCard,
-          { borderColor: statusConfig.border,
-            backgroundColor: statusConfig.bg }]}
+        style={[styles.tradeCard, { borderColor: statusConfig.border, backgroundColor: statusConfig.bg }]}
         onPress={() => router.push(`/trade/${item.id}`)}
         activeOpacity={0.7}
       >
-        {/* Top row */}
         <View style={styles.tradeTop}>
           <View style={styles.tradeAvatar}>
             {otherUser?.avatar_url ? (
-              <Image
-                source={{ uri: otherUser.avatar_url }}
-                style={styles.tradeAvatarImage}
-                resizeMode="cover"
-              />
+              <Image source={{ uri: otherUser.avatar_url }} style={styles.tradeAvatarImage} resizeMode="cover" />
             ) : (
-              <Text style={styles.tradeAvatarText}>
-                {getUserInitial(otherUser)}
-              </Text>
+              <Text style={styles.tradeAvatarText}>{getUserInitial(otherUser)}</Text>
             )}
           </View>
           <View style={styles.tradeInfo}>
-            <Text style={styles.tradeUsername} numberOfLines={1}>
-              @{otherUser?.username || 'unknown'}
-            </Text>
-            <Text style={styles.tradeTime}>
-              {direction} · {timeAgo}
-            </Text>
+            <Text style={styles.tradeUsername} numberOfLines={1}>@{otherUser?.username || 'unknown'}</Text>
+            <Text style={styles.tradeTime}>{direction} · {timeAgo}</Text>
           </View>
-          <View style={[styles.statusPill,
-            { backgroundColor: statusConfig.bg,
-              borderColor: statusConfig.border }]}>
-            <Text style={[styles.statusPillText,
-              { color: statusConfig.color }]}>
-              {statusConfig.label}
-            </Text>
+          <View style={[styles.statusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
+            <Text style={[styles.statusPillText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
           </View>
         </View>
 
-        {/* Pin preview */}
         <View style={styles.pinPreview}>
           <View style={styles.pinThumbs}>
             {(item.offered_pin_ids?.slice(0, 2) || []).map((pinId, i) => (
               <View key={i} style={styles.pinThumb}>
                 {pinImageUrls[pinId] ? (
-                  <Image
-                    source={{ uri: pinImageUrls[pinId] }}
-                    style={styles.pinThumbImage}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: pinImageUrls[pinId] }} style={styles.pinThumbImage} resizeMode="cover" />
                 ) : (
                   <Text style={styles.pinThumbEmoji}>📌</Text>
                 )}
@@ -311,9 +210,7 @@ export default function TradesScreen() {
             ))}
             {(item.offered_pin_ids?.length || 0) > 2 && (
               <View style={[styles.pinThumb, styles.pinThumbMore]}>
-                <Text style={styles.pinThumbMoreText}>
-                  +{(item.offered_pin_ids?.length || 0) - 2}
-                </Text>
+                <Text style={styles.pinThumbMoreText}>+{(item.offered_pin_ids?.length || 0) - 2}</Text>
               </View>
             )}
           </View>
@@ -324,11 +221,7 @@ export default function TradesScreen() {
             {(item.requested_pin_ids?.slice(0, 2) || []).map((pinId, i) => (
               <View key={i} style={styles.pinThumb}>
                 {pinImageUrls[pinId] ? (
-                  <Image
-                    source={{ uri: pinImageUrls[pinId] }}
-                    style={styles.pinThumbImage}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: pinImageUrls[pinId] }} style={styles.pinThumbImage} resizeMode="cover" />
                 ) : (
                   <Text style={styles.pinThumbEmoji}>📌</Text>
                 )}
@@ -337,46 +230,54 @@ export default function TradesScreen() {
           </View>
         </View>
 
-        {/* Footer */}
         <View style={styles.tradeFooter}>
           {expiryText ? (
             <Text style={styles.expiryText}>{expiryText}</Text>
           ) : (
             <Text style={styles.tradeOfferCount}>
-              {item.offered_pin_ids?.length || 0} pin
-              {(item.offered_pin_ids?.length || 0) !== 1 ? 's' : ''} offered
+              {item.offered_pin_ids?.length || 0} pin{(item.offered_pin_ids?.length || 0) !== 1 ? 's' : ''} offered
             </Text>
           )}
-          <Text style={[styles.tradeCTA,
-            isActionable && styles.tradeCTAActive]}>
-            {cta}
-          </Text>
+          <Text style={[styles.tradeCTA, isActionable && styles.tradeCTAActive]}>{cta}</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const activeTrades = trades.filter(t =>
-    ACTIVE_STATUSES.includes(t.status)
-  );
+  const activeTrades = trades.filter(t => ACTIVE_STATUSES.includes(t.status));
+  const filteredTrades = getFilteredTrades();
 
   return (
-    <LinearGradient
-      colors={['#0f1d6e', '#0b1554', '#08103d']}
-      style={styles.container}
-    >
-      <SafeAreaView style={styles.safeArea}>
+    <LinearGradient colors={['#0f1d6e', '#0b1554', '#08103d']} style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
 
-        {/* Header */}
+        {/* Header — matches Collection / Marketplace / Wishlist style */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Text style={styles.headerTitle}>My Trades</Text>
             {activeTrades.length > 0 && (
               <View style={styles.headerBadge}>
-                <Text style={styles.headerBadgeText}>
-                  {activeTrades.length} active
-                </Text>
+                <Text style={styles.headerBadgeText}>{activeTrades.length} active</Text>
               </View>
+            )}
+          </View>
+
+          {/* Search bar */}
+          <View style={styles.searchBar}>
+            <AntDesign name="search" size={14} color="rgba(255,255,255,0.4)" />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search by username or status..."
+              placeholderTextColor={Colors.textPlaceholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <AntDesign name="close" size={14} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
             )}
           </View>
 
@@ -386,25 +287,17 @@ export default function TradesScreen() {
               style={[styles.tab, activeTab === 'active' && styles.tabActive]}
               onPress={() => setActiveTab('active')}
             >
-              <Text style={[styles.tabText,
-                activeTab === 'active' && styles.tabTextActive]}>
-                Active
-              </Text>
+              <Text style={[styles.tabText, activeTab === 'active' && styles.tabTextActive]}>Active</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.tab,
-                activeTab === 'completed' && styles.tabActive]}
+              style={[styles.tab, activeTab === 'completed' && styles.tabActive]}
               onPress={() => setActiveTab('completed')}
             >
-              <Text style={[styles.tabText,
-                activeTab === 'completed' && styles.tabTextActive]}>
-                Completed
-              </Text>
+              <Text style={[styles.tabText, activeTab === 'completed' && styles.tabTextActive]}>Completed</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Content */}
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={Colors.gold} />
@@ -413,9 +306,7 @@ export default function TradesScreen() {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>🔄</Text>
             <Text style={styles.emptyTitle}>
-              {activeTab === 'active'
-                ? 'No active trades'
-                : 'No completed trades yet'}
+              {activeTab === 'active' ? 'No active trades' : 'No completed trades yet'}
             </Text>
             <Text style={styles.emptySubtitle}>
               {activeTab === 'active'
@@ -423,278 +314,81 @@ export default function TradesScreen() {
                 : 'Completed trades will appear here.'}
             </Text>
             {activeTab === 'active' && (
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() => router.push('/(tabs)/marketplace')}
-              >
-                <Text style={styles.emptyButtonText}>
-                  Browse Marketplace
-                </Text>
+              <TouchableOpacity style={styles.emptyButton} onPress={() => router.push('/(tabs)/marketplace')}>
+                <Text style={styles.emptyButtonText}>Browse Marketplace</Text>
               </TouchableOpacity>
             )}
           </View>
+        ) : filteredTrades.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyTitle}>No results</Text>
+            <Text style={styles.emptySubtitle}>No trades match "{searchQuery}"</Text>
+            <TouchableOpacity style={styles.emptyButton} onPress={() => setSearchQuery('')}>
+              <Text style={styles.emptyButtonText}>Clear search</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <FlatList
-            data={trades}
+            data={filteredTrades}
             keyExtractor={item => item.id}
             renderItem={renderTrade}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={Colors.gold}
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.gold} />
             }
           />
         )}
-
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-
-  // Header
-  header: {
-    backgroundColor: 'rgba(15,29,110,0.95)',
-    padding: Theme.screenPadding,
-    paddingTop: Theme.spacing.xl,
-    gap: Theme.spacing.md,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(245,197,24,0.12)',
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: Theme.fontSize.xxl,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
-  headerBadge: {
-    backgroundColor: Colors.goldFaint,
-    borderWidth: 0.5,
-    borderColor: Colors.goldBorder,
-    borderRadius: Theme.radius.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-  },
-  headerBadgeText: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.gold,
-  },
-
-  // Tabs
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: Theme.radius.md,
-    padding: 3,
-    gap: 3,
-  },
-  tab: {
-    flex: 1,
-    borderRadius: Theme.radius.sm,
-    paddingVertical: 7,
-    alignItems: 'center',
-  },
-  tabActive: {
-    backgroundColor: Colors.goldFaint,
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.35)',
-  },
-  tabText: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.textMuted,
-  },
-  tabTextActive: {
-    color: Colors.gold,
-    fontWeight: '500',
-  },
-
-  // Loading
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Empty
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Theme.screenPadding,
-    gap: Theme.spacing.md,
-  },
-  emptyEmoji: {
-    fontSize: 48,
-  },
-  emptyTitle: {
-    fontSize: Theme.fontSize.xl,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: Theme.fontSize.sm,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  emptyButton: {
-    backgroundColor: Colors.crimson,
-    borderRadius: Theme.radius.pill,
-    paddingVertical: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-    marginTop: Theme.spacing.sm,
-  },
-  emptyButtonText: {
-    color: Colors.textPrimary,
-    fontSize: Theme.fontSize.md,
-    fontWeight: '500',
-  },
-
-  // List
-  listContent: {
-    padding: Theme.screenPadding,
-    paddingBottom: 100,
-    gap: Theme.spacing.md,
-  },
-
-  // Trade card
-  tradeCard: {
-    borderRadius: Theme.radius.lg,
-    padding: Theme.spacing.md,
-    borderWidth: 0.5,
-    gap: Theme.spacing.md,
-  },
-
-  // Trade top
-  tradeTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.sm,
-  },
-  tradeAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.royalBlue,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  tradeAvatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 20,
-  },
-  tradeAvatarText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: '500',
-    color: Colors.gold,
-  },
-  tradeInfo: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0,
-  },
-  tradeUsername: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-  },
-  tradeTime: {
-    fontSize: Theme.fontSize.xs,
-    color: Colors.textMuted,
-  },
-  statusPill: {
-    borderRadius: Theme.radius.pill,
-    borderWidth: 0.5,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
-    flexShrink: 0,
-  },
-  statusPillText: {
-    fontSize: 9,
-    fontWeight: '500',
-  },
-
-  // Pin preview
-  pinPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Theme.spacing.md,
-  },
-  pinThumbs: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  pinThumb: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 0.5,
-    borderColor: 'rgba(245,197,24,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinThumbImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 6,
-  },
-  pinThumbEmoji: {
-    fontSize: 18,
-  },
-  pinThumbMore: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  pinThumbMoreText: {
-    fontSize: Theme.fontSize.xs,
-    color: Colors.textMuted,
-  },
-  swapIcon: {
-    flexShrink: 0,
-  },
-
-  // Trade footer
-  tradeFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  expiryText: {
-    fontSize: Theme.fontSize.xs,
-    color: 'rgba(245,197,24,0.6)',
-  },
-  tradeOfferCount: {
-    fontSize: Theme.fontSize.xs,
-    color: Colors.textMuted,
-  },
-  tradeCTA: {
-    fontSize: Theme.fontSize.xs,
-    color: Colors.textMuted,
-  },
-  tradeCTAActive: {
-    color: Colors.gold,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+  header: { backgroundColor: 'rgba(15,29,110,0.95)', padding: Theme.screenPadding, paddingTop: Theme.spacing.md, gap: Theme.spacing.md, borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: Theme.fontSize.xxl, fontWeight: '500', color: Colors.textPrimary },
+  headerBadge: { backgroundColor: Colors.goldFaint, borderWidth: 0.5, borderColor: Colors.goldBorder, borderRadius: Theme.radius.pill, paddingVertical: 3, paddingHorizontal: 10 },
+  headerBadgeText: { fontSize: Theme.fontSize.sm, color: Colors.gold },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.md, paddingHorizontal: Theme.spacing.md },
+  searchInput: { flex: 1, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.sm },
+  tabs: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: Theme.radius.md, padding: 3, gap: 3 },
+  tab: { flex: 1, borderRadius: Theme.radius.sm, paddingVertical: 7, alignItems: 'center' },
+  tabActive: { backgroundColor: Colors.goldFaint, borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.35)' },
+  tabText: { fontSize: Theme.fontSize.sm, color: Colors.textMuted },
+  tabTextActive: { color: Colors.gold, fontWeight: '500' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Theme.screenPadding, gap: Theme.spacing.md },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { fontSize: Theme.fontSize.xl, fontWeight: '500', color: Colors.textPrimary, textAlign: 'center' },
+  emptySubtitle: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  emptyButton: { backgroundColor: Colors.crimson, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.sm, paddingHorizontal: Theme.spacing.xl, borderWidth: 1, borderColor: Colors.goldBorder, marginTop: Theme.spacing.sm },
+  emptyButtonText: { color: Colors.textPrimary, fontSize: Theme.fontSize.md, fontWeight: '500' },
+  listContent: { padding: Theme.screenPadding, paddingBottom: 100, gap: Theme.spacing.md },
+  tradeCard: { borderRadius: Theme.radius.lg, padding: Theme.spacing.md, borderWidth: 0.5, gap: Theme.spacing.md },
+  tradeTop: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
+  tradeAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.royalBlue, borderWidth: 1, borderColor: Colors.goldBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  tradeAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
+  tradeAvatarText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.gold },
+  tradeInfo: { flex: 1, gap: 2, minWidth: 0 },
+  tradeUsername: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textPrimary },
+  tradeTime: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
+  statusPill: { borderRadius: Theme.radius.pill, borderWidth: 0.5, paddingVertical: 3, paddingHorizontal: 9, flexShrink: 0 },
+  statusPillText: { fontSize: 9, fontWeight: '500' },
+  pinPreview: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.md },
+  pinThumbs: { flexDirection: 'row', gap: 4 },
+  pinThumb: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', alignItems: 'center', justifyContent: 'center' },
+  pinThumbImage: { width: '100%', height: '100%', borderRadius: 6 },
+  pinThumbEmoji: { fontSize: 18 },
+  pinThumbMore: { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.1)' },
+  pinThumbMoreText: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
+  swapIcon: { flexShrink: 0 },
+  tradeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  expiryText: { fontSize: Theme.fontSize.xs, color: 'rgba(245,197,24,0.6)' },
+  tradeOfferCount: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
+  tradeCTA: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
+  tradeCTAActive: { color: Colors.gold },
 });

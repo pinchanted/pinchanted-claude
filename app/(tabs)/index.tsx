@@ -83,7 +83,7 @@ useFocusEffect(
       colors={['#0f1d6e', '#0b1554', '#08103d']}
       style={styles.container}
     >
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
