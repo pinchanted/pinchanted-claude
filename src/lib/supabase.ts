@@ -592,3 +592,51 @@ export const subscribeToTradeMessages = (
     )
     .subscribe();
 };
+// ============================================================
+// TRADE RATINGS
+// Add these to the end of src/lib/supabase.ts
+// ============================================================
+
+export const submitTradeRating = async (
+  tradeId: string,
+  raterId: string,
+  ratedUserId: string,
+  rating: number,
+  comment: string | null
+) => {
+  const { data, error } = await supabase
+    .from('trade_ratings')
+    .insert({
+      trade_id: tradeId,
+      rater_id: raterId,
+      rated_user_id: ratedUserId,
+      rating,
+      comment: comment?.trim() || null,
+    })
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const getTradeRating = async (tradeId: string, raterId: string) => {
+  const { data, error } = await supabase
+    .from('trade_ratings')
+    .select('*')
+    .eq('trade_id', tradeId)
+    .eq('rater_id', raterId)
+    .maybeSingle();
+  return { data, error };
+};
+
+export const getUserRatings = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('trade_ratings')
+    .select(`
+      *,
+      rater:profiles!rater_id(id, username, display_name, avatar_url)
+    `)
+    .eq('rated_user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  return { data, error };
+};

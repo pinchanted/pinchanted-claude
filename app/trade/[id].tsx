@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { submitTradeRating, getTradeRating } from '../../src/lib/supabase';
 import { GlobalHeader } from '../../src/components/GlobalHeader';
 import {
   View,
@@ -33,6 +34,12 @@ import {
   CollectionPin,
   Profile,
 } from '../../src/types/database.types';
+
+const [myRating, setMyRating] = useState<any>(null);
+const [ratingLoading, setRatingLoading] = useState(false);
+const [selectedRating, setSelectedRating] = useState(0);
+const [ratingComment, setRatingComment] = useState('');
+const [ratingSubmitted, setRatingSubmitted] = useState(false);
 
 const STATUS_CONFIG: Record<string, {
   label: string; color: string; bg: string; border: string;
@@ -126,6 +133,10 @@ export default function TradeDetailScreen() {
 
     setOfferedPins(offeredData);
     setRequestedPins(requestedData);
+    if (data.status === 'completed' && profile?.id) {
+      const { data: existingRating } = await getTradeRating(data.id, profile.id);
+      setMyRating(existingRating);
+    }
     setIsLoading(false);
   };
 
@@ -362,6 +373,26 @@ export default function TradeDetailScreen() {
     setSendingMessage(false);
   };
 
+  const handleSubmitRating = async () => {
+    if (selectedRating === 0) {
+      Alert.alert('Rating required', 'Please select a star rating.');
+      return;
+    }
+    setRatingLoading(true);
+    const otherUserId = isInitiator ? trade!.recipient_id : trade!.initiator_id;
+    const { data, error } = await submitTradeRating(
+      id, profile!.id, otherUserId, selectedRating, ratingComment || null
+    );
+    if (error) {
+      Alert.alert('Error', 'Could not submit rating. Please try again.');
+    } else {
+      setMyRating(data);
+      setRatingSubmitted(true);
+      Alert.alert('Rating submitted! ⭐', 'Thank you for rating this trade.');
+    }
+    setRatingLoading(false);
+  };
+  
   const handleDispute = () => {
     Alert.alert(
       'Raise a dispute?',
@@ -759,12 +790,92 @@ export default function TradeDetailScreen() {
                   </View>
                 )}
 
-                {trade.status === 'completed' && (
-                  <View style={styles.completedRow}>
-                    <Text style={styles.completedEmoji}>🎉</Text>
-                    <Text style={styles.completedText}>Trade completed!</Text>
-                  </View>
-                )}
+{trade.status === 'completed' && (
+  <>
+    <View style={styles.completedRow}>
+      <Text style={styles.completedEmoji}>🎉</Text>
+      <Text style={styles.completedText}>Trade completed!</Text>
+    </View>
+ 
+    {/* Rating section */}
+    {!myRating && !ratingSubmitted ? (
+      <View style={styles.ratingCard}>
+        <Text style={styles.ratingTitle}>Rate this trade</Text>
+        <Text style={styles.ratingSubtitle}>
+          How was your experience trading with @{(otherUser as any)?.username}?
+        </Text>
+ 
+        {/* Star picker */}
+        <View style={styles.starRow}>
+          {[1, 2, 3, 4, 5].map(star => (
+            <TouchableOpacity
+              key={star}
+              onPress={() => setSelectedRating(star)}
+              style={styles.starBtn}
+              activeOpacity={0.7}
+            >
+              <AntDesign
+                name={star <= selectedRating ? 'star' : 'star'}
+                size={32}
+                color={star <= selectedRating ? Colors.gold : 'rgba(255,255,255,0.2)'}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
+ 
+        {selectedRating > 0 && (
+          <Text style={styles.ratingLabel}>
+            {selectedRating === 1 ? 'Poor' :
+             selectedRating === 2 ? 'Fair' :
+             selectedRating === 3 ? 'Good' :
+             selectedRating === 4 ? 'Great' : 'Excellent!'}
+          </Text>
+        )}
+ 
+        {/* Optional comment */}
+        <TextInput
+          style={styles.ratingInput}
+          value={ratingComment}
+          onChangeText={setRatingComment}
+          placeholder="Leave a comment (optional)..."
+          placeholderTextColor={Colors.textPlaceholder}
+          multiline
+          numberOfLines={2}
+          maxLength={200}
+        />
+ 
+        <TouchableOpacity
+          style={[styles.ratingSubmitBtn, selectedRating === 0 && styles.ratingSubmitBtnDisabled]}
+          onPress={handleSubmitRating}
+          disabled={ratingLoading || selectedRating === 0}
+        >
+          {ratingLoading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.ratingSubmitBtnText}>Submit rating</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    ) : (
+      <View style={styles.ratingSubmittedCard}>
+        <AntDesign name="check-circle" size={16} color={Colors.success} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.ratingSubmittedText}>You rated this trade</Text>
+          <View style={styles.starRowSmall}>
+            {[1, 2, 3, 4, 5].map(star => (
+              <AntDesign
+                key={star}
+                name={star <= (myRating?.rating || selectedRating) ? 'star' : 'star'}
+                size={14}
+                color={Colors.gold}
+              />
+            ))}
+          </View>
+        </View>
+      </View>
+    )}
+  </>
+)}
 
                 {(trade.status === 'declined' || trade.status === 'expired') && (
                   <View style={styles.waitingRow}>
@@ -949,4 +1060,83 @@ const styles = StyleSheet.create({
   counterBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500' as const, color: Colors.gold },
   counterReceivedRow: { flexDirection: 'row', alignItems: 'flex-start' as const, gap: Theme.spacing.sm, padding: Theme.spacing.sm, backgroundColor: 'rgba(245,197,24,0.06)', borderRadius: Theme.radius.sm, borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)' },
   counterReceivedText: { flex: 1, fontSize: Theme.fontSize.sm, color: Colors.gold, lineHeight: 18 },
+  ratingCard: {
+  backgroundColor: 'rgba(245,197,24,0.06)',
+  borderWidth: 0.5,
+  borderColor: 'rgba(245,197,24,0.2)',
+  borderRadius: Theme.radius.md,
+  padding: Theme.spacing.md,
+  gap: Theme.spacing.md,
+},
+ratingTitle: {
+  fontSize: Theme.fontSize.md,
+  fontWeight: '500',
+  color: Colors.textPrimary,
+},
+ratingSubtitle: {
+  fontSize: Theme.fontSize.sm,
+  color: Colors.textMuted,
+  lineHeight: 18,
+},
+starRow: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  gap: Theme.spacing.md,
+},
+starRowSmall: {
+  flexDirection: 'row',
+  gap: 2,
+  marginTop: 2,
+},
+starBtn: {
+  padding: 4,
+},
+ratingLabel: {
+  fontSize: Theme.fontSize.sm,
+  color: Colors.gold,
+  textAlign: 'center',
+  fontWeight: '500',
+},
+ratingInput: {
+  backgroundColor: 'rgba(255,255,255,0.07)',
+  borderWidth: 0.5,
+  borderColor: 'rgba(245,197,24,0.2)',
+  borderRadius: Theme.radius.sm,
+  paddingHorizontal: Theme.spacing.md,
+  paddingVertical: Theme.spacing.sm,
+  color: Colors.textPrimary,
+  fontSize: Theme.fontSize.sm,
+  minHeight: 60,
+  textAlignVertical: 'top',
+},
+ratingSubmitBtn: {
+  backgroundColor: Colors.crimson,
+  borderRadius: Theme.radius.pill,
+  paddingVertical: Theme.spacing.md,
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: Colors.goldBorder,
+},
+ratingSubmitBtnDisabled: {
+  opacity: 0.4,
+},
+ratingSubmitBtnText: {
+  fontSize: Theme.fontSize.md,
+  fontWeight: '500',
+  color: Colors.textPrimary,
+},
+ratingSubmittedCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: Theme.spacing.sm,
+  padding: Theme.spacing.sm,
+  backgroundColor: 'rgba(93,202,122,0.08)',
+  borderRadius: Theme.radius.sm,
+  borderWidth: 0.5,
+  borderColor: 'rgba(93,202,122,0.2)',
+},
+ratingSubmittedText: {
+  fontSize: Theme.fontSize.sm,
+  color: Colors.success,
+},
 });
