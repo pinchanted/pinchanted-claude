@@ -422,7 +422,6 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: 'rgba(15,29,110,0.95)',
     padding: Theme.screenPadding,
-    paddingTop: Theme.spacing.md,
     gap: Theme.spacing.md,
     borderBottomWidth: 0.5,
     borderBottomColor: 'rgba(245,197,24,0.12)',

@@ -275,7 +275,7 @@ export default function WishlistScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  header: { backgroundColor: 'rgba(15,29,110,0.95)', padding: Theme.screenPadding, paddingTop: Theme.spacing.md, gap: Theme.spacing.md, borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
+  header: { backgroundColor: 'rgba(15,29,110,0.95)', padding: Theme.screenPadding, gap: Theme.spacing.md, borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerTitle: { fontSize: Theme.fontSize.xxl, fontWeight: '500', color: Colors.textPrimary },
   headerBadge: { backgroundColor: Colors.pinkFaint, borderWidth: 0.5, borderColor: Colors.pinkBorder, borderRadius: Theme.radius.pill, paddingVertical: 3, paddingHorizontal: 10 },
