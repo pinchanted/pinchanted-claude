@@ -35,12 +35,6 @@ import {
   Profile,
 } from '../../src/types/database.types';
 
-const [myRating, setMyRating] = useState<any>(null);
-const [ratingLoading, setRatingLoading] = useState(false);
-const [selectedRating, setSelectedRating] = useState(0);
-const [ratingComment, setRatingComment] = useState('');
-const [ratingSubmitted, setRatingSubmitted] = useState(false);
-
 const STATUS_CONFIG: Record<string, {
   label: string; color: string; bg: string; border: string;
 }> = {
@@ -85,6 +79,12 @@ export default function TradeDetailScreen() {
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const messagesEndRef = useRef<any>(null);
+
+  const [myRating, setMyRating] = useState<any>(null);
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
 
   useEffect(() => {
     if (id) {
