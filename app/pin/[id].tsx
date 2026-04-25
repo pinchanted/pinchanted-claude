@@ -58,17 +58,23 @@ export default function PinDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Editable fields
+  // ── Owner personal fields ────────────────────────────────
   const [condition, setCondition] = useState('Mint');
   const [purchasePrice, setPurchasePrice] = useState('');
   const [notes, setNotes] = useState('');
   const [tradeStatus, setTradeStatus] = useState<PinTradeStatus>('available');
   const [isWishlisted, setIsWishlisted] = useState(false);
-
-  // Trade status collapse
   const [tradeStatusExpanded, setTradeStatusExpanded] = useState(false);
 
-  // Marketplace listing
+  // ── Owner metadata overrides ─────────────────────────────
+  // Pre-populated from override_* columns (which fall back to reference/community pin defaults)
+  const [overrideName, setOverrideName] = useState('');
+  const [overrideSeriesName, setOverrideSeriesName] = useState('');
+  const [overrideEdition, setOverrideEdition] = useState('');
+  const [overrideOrigin, setOverrideOrigin] = useState('');
+  const [overrideOriginalPrice, setOverrideOriginalPrice] = useState('');
+
+  // ── Marketplace listing ──────────────────────────────────
   const [hasListing, setHasListing] = useState(false);
   const [listingId, setListingId] = useState<string | null>(null);
   const [openToTrade, setOpenToTrade] = useState(true);
@@ -101,17 +107,31 @@ export default function PinDetailScreen() {
 
     const p = data as CollectionPin;
     setPin(p);
+
+    // Personal fields
     setCondition(p.condition || 'Mint');
     setPurchasePrice(p.my_purchase_price?.toString() || '');
     setNotes(p.notes || '');
     setTradeStatus(p.trade_status as PinTradeStatus);
     setIsWishlisted(p.is_wishlisted);
 
+    // ── Coalesce pattern for metadata overrides ──────────────
+    // Show override value if set, otherwise fall back to reference/community pin default
+    const refPin = p.reference_pin as any;
+    const comPin = p.community_pin as any;
+    setOverrideName((p as any).override_name ?? refPin?.name ?? comPin?.name ?? '');
+    setOverrideSeriesName((p as any).override_series_name ?? refPin?.series_name ?? comPin?.series_name ?? '');
+    setOverrideEdition((p as any).override_edition ?? refPin?.edition ?? comPin?.edition ?? '');
+    setOverrideOrigin((p as any).override_origin ?? refPin?.origin ?? comPin?.origin ?? '');
+    setOverrideOriginalPrice(
+      ((p as any).override_original_price ?? refPin?.original_price ?? comPin?.original_price)?.toString() ?? ''
+    );
+
     if (p.my_image_path) {
-      const url = getPinImageUrl(p.my_image_path);
-      setImageUrl(url);
+      setImageUrl(getPinImageUrl(p.my_image_path));
     }
 
+    // Fetch marketplace listing
     const { data: listing } = await supabase
       .from('marketplace_listings')
       .select('*')
@@ -128,19 +148,66 @@ export default function PinDetailScreen() {
       setListingDescription(listing.description || '');
     }
 
+    // For non-owners: check user_wishlist table
+    if (p.user_id !== profile?.id) {
+      const col = p.reference_pin_id ? 'reference_pin_id' : 'community_pin_id';
+      const val = (p as any).reference_pin_id || (p as any).community_pin_id;
+      if (val) {
+        const { data: wishlistEntry } = await supabase
+          .from('user_wishlist')
+          .select('id')
+          .eq('user_id', profile?.id)
+          .eq(col, val)
+          .maybeSingle();
+        setIsWishlisted(!!wishlistEntry);
+      }
+    }
+
     setIsLoading(false);
+  };
+
+  // ── Coalesce helpers for display (read-only fields) ──────
+  // These are used in the hero card for values the owner hasn't overridden
+  const getDisplayValue = (pin: CollectionPin, field: string): any => {
+    const override = (pin as any)[`override_${field}`];
+    if (override !== null && override !== undefined) return override;
+    const ref = (pin.reference_pin as any)?.[field];
+    if (ref !== null && ref !== undefined) return ref;
+    return (pin.community_pin as any)?.[field] ?? null;
   };
 
   const saveChanges = async () => {
     if (!pin) return;
     setIsSaving(true);
+
+    // Determine which overrides the user has actually changed vs the source defaults
+    const refPin = pin.reference_pin as any;
+    const comPin = pin.community_pin as any;
+
+    const sourceDefaults = {
+      name: refPin?.name ?? comPin?.name ?? '',
+      series_name: refPin?.series_name ?? comPin?.series_name ?? '',
+      edition: refPin?.edition ?? comPin?.edition ?? '',
+      origin: refPin?.origin ?? comPin?.origin ?? '',
+      original_price: (refPin?.original_price ?? comPin?.original_price)?.toString() ?? '',
+    };
+
     const { error } = await updateCollectionPin(pin.id, {
       condition,
       my_purchase_price: purchasePrice ? parseFloat(purchasePrice) : null,
       notes: notes.trim() || null,
       trade_status: tradeStatus,
       is_wishlisted: isWishlisted,
-    });
+      // Only store override if user changed it from the source default
+      override_name: overrideName !== sourceDefaults.name ? overrideName.trim() || null : null,
+      override_series_name: overrideSeriesName !== sourceDefaults.series_name ? overrideSeriesName.trim() || null : null,
+      override_edition: overrideEdition !== sourceDefaults.edition ? overrideEdition.trim() || null : null,
+      override_origin: overrideOrigin !== sourceDefaults.origin ? overrideOrigin.trim() || null : null,
+      override_original_price: overrideOriginalPrice !== sourceDefaults.original_price
+        ? (overrideOriginalPrice ? parseFloat(overrideOriginalPrice) : null)
+        : null,
+    } as any);
+
     if (error) {
       Alert.alert('Error', 'Could not save changes. Please try again.');
       setIsSaving(false);
@@ -152,7 +219,7 @@ export default function PinDetailScreen() {
 
   const saveListing = async () => {
     if (!openToTrade && !openToSale) {
-      Alert.alert('Required', 'Please select at least one listing type (trade or sale).');
+      Alert.alert('Required', 'Please select at least one listing type.');
       return;
     }
     if (openToSale && !askingPrice) {
@@ -178,10 +245,7 @@ export default function PinDetailScreen() {
       ({ error } = await supabase.from('marketplace_listings').update(payload).eq('id', listingId));
     } else {
       const { error: insertError, data } = await supabase
-        .from('marketplace_listings')
-        .insert(payload)
-        .select()
-        .single();
+        .from('marketplace_listings').insert(payload).select().single();
       error = insertError;
       if (data) setListingId(data.id);
     }
@@ -191,7 +255,6 @@ export default function PinDetailScreen() {
       setSavingListing(false);
       return;
     }
-
     setHasListing(true);
     setSavingListing(false);
   };
@@ -205,7 +268,7 @@ export default function PinDetailScreen() {
   const handleRemoveFromCollection = () => {
     Alert.alert(
       'Remove pin',
-      'Are you sure you want to remove this pin from your collection? The pin will be hidden but trade history will be preserved.',
+      'Are you sure you want to remove this pin from your collection?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -228,41 +291,36 @@ export default function PinDetailScreen() {
   };
 
   const removeListing = () => {
-    Alert.alert(
-      'Remove listing',
-      'Remove this pin from the Marketplace?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            if (!listingId) return;
-            await supabase.from('marketplace_listings').update({ status: 'removed' }).eq('id', listingId);
-            setHasListing(false);
-            setListingId(null);
-          },
+    Alert.alert('Remove listing', 'Remove this pin from the Marketplace?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          if (!listingId) return;
+          await supabase.from('marketplace_listings').update({ status: 'removed' }).eq('id', listingId);
+          setHasListing(false);
+          setListingId(null);
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleWishlistToggle = async (val: boolean) => {
     setIsWishlisted(val);
     if (!pin || !profile?.id) return;
+    const refPinId = (pin as any).reference_pin_id;
+    const comPinId = (pin as any).community_pin_id;
     if (val) {
-      await supabase.from('wishlisted_pins').upsert({
+      await supabase.from('user_wishlist').upsert({
         user_id: profile.id,
-        reference_pin_id: pin.reference_pin_id || null,
-        community_pin_id: pin.community_pin_id || null,
+        reference_pin_id: refPinId || null,
+        community_pin_id: comPinId || null,
       });
     } else {
-      await supabase
-        .from('wishlisted_pins')
-        .delete()
-        .eq('user_id', profile.id)
-        .eq(pin.reference_pin_id ? 'reference_pin_id' : 'community_pin_id',
-            pin.reference_pin_id || pin.community_pin_id);
+      const col = refPinId ? 'reference_pin_id' : 'community_pin_id';
+      const colVal = refPinId || comPinId;
+      await supabase.from('user_wishlist').delete().eq('user_id', profile.id).eq(col, colVal);
     }
   };
 
@@ -278,27 +336,38 @@ export default function PinDetailScreen() {
 
   if (!pin) return null;
 
-  // ── Ownership check ───────────────────────────────────────
+  // isOwner is false when browsing from Marketplace (fromMarketplace=true)
   const isOwner = pin.user_id === profile?.id && fromMarketplace !== 'true';
-  const name = pin.reference_pin?.name || pin.community_pin?.name || 'Unknown Pin';
-  const series = pin.reference_pin?.series_name || pin.community_pin?.series_name || null;
-  const edition = pin.reference_pin?.edition || pin.community_pin?.edition || null;
-  const origin = pin.reference_pin?.origin || pin.community_pin?.origin || null;
-  const originalPrice = pin.reference_pin?.original_price || pin.community_pin?.original_price || null;
-  const releaseDate = pin.reference_pin?.release_date || pin.community_pin?.release_date || null;
-  const editionConfig = edition ? EDITION_CONFIG[edition] : null;
+
+  // ── Display values using coalesce pattern ────────────────
+  // Override → reference_pin → community_pin → fallback
+  const displayName = getDisplayValue(pin, 'name') || 'Unknown Pin';
+  const displaySeries = getDisplayValue(pin, 'series_name');
+  const displayEdition = getDisplayValue(pin, 'edition');
+  const displayOrigin = getDisplayValue(pin, 'origin');
+  const displayOriginalPrice = getDisplayValue(pin, 'original_price');
+  const releaseDate = (pin.reference_pin as any)?.release_date || (pin.community_pin as any)?.release_date || null;
+  const editionConfig = displayEdition ? EDITION_CONFIG[displayEdition] : null;
   const currentTradeStatus = TRADE_STATUS_OPTIONS.find(o => o.value === tradeStatus);
+
+  // Check if any metadata has been overridden by the user
+  const hasOverrides = !!(
+    (pin as any).override_name ||
+    (pin as any).override_series_name ||
+    (pin as any).override_edition ||
+    (pin as any).override_origin ||
+    (pin as any).override_original_price
+  );
 
   return (
     <LinearGradient colors={['#0f1d6e', '#0b1554', '#08103d']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
 
-        {/* Header */}
         <View style={[styles.headerBar, { paddingTop: Theme.spacing.md + insets.top }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <AntDesign name="left" size={18} color={Colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{name}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{displayName}</Text>
           {isOwner ? (
             <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveFromCollection}>
               <AntDesign name="delete" size={16} color={Colors.error} />
@@ -314,7 +383,7 @@ export default function PinDetailScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Pin image + core info */}
+          {/* Hero card — shows coalesced display values */}
           <View style={styles.heroCard}>
             <View style={styles.imageWrap}>
               {imageUrl ? (
@@ -329,27 +398,32 @@ export default function PinDetailScreen() {
                   <Text style={[styles.editionBadgeText, { color: editionConfig.color }]}>{editionConfig.label}</Text>
                 </View>
               )}
+              {hasOverrides && isOwner && (
+                <View style={styles.overrideBadge}>
+                  <Text style={styles.overrideBadgeText}>Edited</Text>
+                </View>
+              )}
             </View>
             <View style={styles.heroInfo}>
-              <Text style={styles.pinName}>{name}</Text>
-              {series && <Text style={styles.pinSeries}>{series}</Text>}
+              <Text style={styles.pinName}>{displayName}</Text>
+              {displaySeries && <Text style={styles.pinSeries}>{displaySeries}</Text>}
               <View style={styles.metaRows}>
-                {edition && (
+                {displayEdition && (
                   <View style={styles.metaRow}>
                     <Text style={styles.metaLabel}>Edition</Text>
-                    <Text style={styles.metaValue}>{edition}</Text>
+                    <Text style={styles.metaValue}>{displayEdition}</Text>
                   </View>
                 )}
-                {origin && (
+                {displayOrigin && (
                   <View style={styles.metaRow}>
                     <Text style={styles.metaLabel}>Origin</Text>
-                    <Text style={styles.metaValue}>{origin}</Text>
+                    <Text style={styles.metaValue}>{displayOrigin}</Text>
                   </View>
                 )}
-                {originalPrice && (
+                {displayOriginalPrice && (
                   <View style={styles.metaRow}>
                     <Text style={styles.metaLabel}>Original price</Text>
-                    <Text style={styles.metaValue}>${originalPrice.toFixed(2)}</Text>
+                    <Text style={styles.metaValue}>${Number(displayOriginalPrice).toFixed(2)}</Text>
                   </View>
                 )}
                 {releaseDate && (
@@ -371,7 +445,7 @@ export default function PinDetailScreen() {
           </View>
 
           {isOwner ? (
-            // ── Owner: full edit view ─────────────────────────
+            // ── Owner: full edit view ──────────────────────────
             <>
               {/* Wishlist toggle */}
               <View style={styles.section}>
@@ -389,6 +463,91 @@ export default function PinDetailScreen() {
                       onValueChange={setIsWishlisted}
                       trackColor={{ false: 'rgba(255,255,255,0.1)', true: 'rgba(249,200,216,0.3)' }}
                       thumbColor={isWishlisted ? Colors.pink : 'rgba(255,255,255,0.4)'}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Pin information — editable overrides */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Pin information</Text>
+                  {hasOverrides && (
+                    <TouchableOpacity onPress={async () => {
+                      // Reset all overrides to source defaults
+                      const refPin = pin.reference_pin as any;
+                      const comPin = pin.community_pin as any;
+                      setOverrideName(refPin?.name ?? comPin?.name ?? '');
+                      setOverrideSeriesName(refPin?.series_name ?? comPin?.series_name ?? '');
+                      setOverrideEdition(refPin?.edition ?? comPin?.edition ?? '');
+                      setOverrideOrigin(refPin?.origin ?? comPin?.origin ?? '');
+                      setOverrideOriginalPrice((refPin?.original_price ?? comPin?.original_price)?.toString() ?? '');
+                    }}>
+                      <Text style={styles.resetLink}>Reset to defaults</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={styles.sectionHint}>These values come from our database. Edit if they don't match your pin.</Text>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Pin name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={overrideName}
+                    onChangeText={setOverrideName}
+                    placeholder="Pin name"
+                    placeholderTextColor={Colors.textPlaceholder}
+                    autoCapitalize="words"
+                  />
+                </View>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Series name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={overrideSeriesName}
+                    onChangeText={setOverrideSeriesName}
+                    placeholder="Series name"
+                    placeholderTextColor={Colors.textPlaceholder}
+                    autoCapitalize="words"
+                  />
+                </View>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Edition</Text>
+                  <View style={styles.segmentRow}>
+                    {['Limited Edition', 'Open Edition', 'Limited Release'].map(e => (
+                      <TouchableOpacity
+                        key={e}
+                        style={[styles.segmentBtn, overrideEdition === e && styles.segmentBtnActive]}
+                        onPress={() => setOverrideEdition(overrideEdition === e ? '' : e)}
+                      >
+                        <Text style={[styles.segmentBtnText, overrideEdition === e && styles.segmentBtnTextActive]}>
+                          {e === 'Limited Edition' ? 'LE' : e === 'Open Edition' ? 'OE' : 'LR'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Origin</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={overrideOrigin}
+                    onChangeText={setOverrideOrigin}
+                    placeholder="e.g. Magic Kingdom"
+                    placeholderTextColor={Colors.textPlaceholder}
+                    autoCapitalize="words"
+                  />
+                </View>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>Original retail price</Text>
+                  <View style={styles.priceInput}>
+                    <Text style={styles.priceDollar}>$</Text>
+                    <TextInput
+                      style={styles.priceField}
+                      value={overrideOriginalPrice}
+                      onChangeText={setOverrideOriginalPrice}
+                      placeholder="0.00"
+                      placeholderTextColor={Colors.textPlaceholder}
+                      keyboardType="decimal-pad"
                     />
                   </View>
                 </View>
@@ -459,25 +618,17 @@ export default function PinDetailScreen() {
                 {tradeStatusExpanded && (
                   <View style={styles.collapseBody}>
                     <Text style={styles.collapseWarning}>
-                      ⚠️ Changing trade status affects how this pin appears in trades and the Marketplace. Only change this if you know what you're doing.
+                      ⚠️ Changing trade status affects how this pin appears in trades and the Marketplace.
                     </Text>
                     <View style={styles.tradeStatusList}>
                       {TRADE_STATUS_OPTIONS.map(option => (
                         <TouchableOpacity
                           key={option.value}
-                          style={[
-                            styles.tradeStatusOption,
-                            tradeStatus === option.value && { borderColor: option.color, backgroundColor: `${option.color}18` },
-                          ]}
+                          style={[styles.tradeStatusOption, tradeStatus === option.value && { borderColor: option.color, backgroundColor: `${option.color}18` }]}
                           onPress={() => setTradeStatus(option.value)}
                         >
-                          <View style={[
-                            styles.tradeStatusRadio,
-                            tradeStatus === option.value && { borderColor: option.color, backgroundColor: option.color },
-                          ]} />
-                          <Text style={[styles.tradeStatusLabel, tradeStatus === option.value && { color: option.color }]}>
-                            {option.label}
-                          </Text>
+                          <View style={[styles.tradeStatusRadio, tradeStatus === option.value && { borderColor: option.color, backgroundColor: option.color }]} />
+                          <Text style={[styles.tradeStatusLabel, tradeStatus === option.value && { color: option.color }]}>{option.label}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -557,12 +708,8 @@ export default function PinDetailScreen() {
                 )}
               </View>
 
-              {/* Save button */}
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={handleSaveAll}
-                disabled={isSaving || savingListing}
-              >
+              {/* Save */}
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveAll} disabled={isSaving || savingListing}>
                 {isSaving || savingListing ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
@@ -573,7 +720,6 @@ export default function PinDetailScreen() {
           ) : (
             // ── Non-owner: read-only + actions ────────────────
             <>
-              {/* Read-only pin details */}
               <View style={styles.section}>
                 <View style={styles.card}>
                   <View style={[styles.metaRow, { padding: Theme.spacing.md }]}>
@@ -646,6 +792,8 @@ const styles = StyleSheet.create({
   pinImageEmoji: { fontSize: 48 },
   editionBadge: { position: 'absolute', top: 6, left: 6, borderRadius: Theme.radius.pill, borderWidth: 0.5, paddingVertical: 2, paddingHorizontal: 6 },
   editionBadgeText: { fontSize: 8, fontWeight: '500' },
+  overrideBadge: { position: 'absolute', bottom: 6, left: 6, borderRadius: Theme.radius.pill, backgroundColor: 'rgba(245,197,24,0.15)', borderWidth: 0.5, borderColor: Colors.goldBorder, paddingVertical: 2, paddingHorizontal: 6 },
+  overrideBadgeText: { fontSize: 8, color: Colors.gold, fontWeight: '500' },
   heroInfo: { flex: 1, padding: Theme.spacing.md, gap: Theme.spacing.sm },
   pinName: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary, lineHeight: 20 },
   pinSeries: { fontSize: Theme.fontSize.sm, color: Colors.gold, opacity: 0.75 },
@@ -656,6 +804,8 @@ const styles = StyleSheet.create({
   section: { gap: Theme.spacing.md },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
+  sectionHint: { fontSize: Theme.fontSize.xs, color: Colors.textMuted, lineHeight: 16 },
+  resetLink: { fontSize: Theme.fontSize.xs, color: Colors.gold },
   listedBadge: { backgroundColor: Colors.successFaint, borderWidth: 0.5, borderColor: Colors.successBorder, borderRadius: Theme.radius.pill, paddingVertical: 2, paddingHorizontal: 8 },
   listedBadgeText: { fontSize: Theme.fontSize.xs, color: Colors.success, fontWeight: '500' },
   card: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, overflow: 'hidden' },
@@ -694,4 +844,5 @@ const styles = StyleSheet.create({
   removeListingBtnText: { fontSize: Theme.fontSize.sm, color: Colors.error },
   tradeOfferBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Theme.spacing.sm, backgroundColor: Colors.crimson, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, borderWidth: 1, borderColor: Colors.goldBorder },
   tradeOfferBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
+  userAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
 });
