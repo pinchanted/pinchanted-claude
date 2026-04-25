@@ -298,7 +298,7 @@ export default function CollectionScreen() {
                 style={styles.shareButton}
                 onPress={() => router.push('/share-collection' as any)}
               >
-                <AntDesign name="share-alt" size={16} color={Colors.gold} />
+                <AntDesign name="export" size={16} color={Colors.gold} />
               </TouchableOpacity>
             </View>
           </View>

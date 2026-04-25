@@ -362,7 +362,7 @@ export default function ShareCollectionScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <AntDesign name="share-alt" size={18} color="#fff" />
+                  <AntDesign name="export" size={18} color="#fff" />
                   <Text style={styles.shareBtnText}>Save image & share</Text>
                 </>
               )}
