@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { GlobalHeader } from '../../src/components/GlobalHeader';
 import {
   View,
   Text,
@@ -553,7 +554,8 @@ export default function TradeDetailScreen() {
     <LinearGradient colors={['#0f1d6e', '#0b1554', '#08103d']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
 
-        <View style={[styles.headerBar, { paddingTop: Theme.spacing.md + insets.top }]}>
+        <GlobalHeader />
+        <View style={styles.headerBar}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <AntDesign name="left" size={18} color={Colors.textPrimary} />
           </TouchableOpacity>
@@ -854,7 +856,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Theme.screenPadding, paddingBottom: Theme.spacing.md, backgroundColor: 'rgba(15,29,110,0.95)', borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
+  headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Theme.screenPadding, paddingVertical: Theme.spacing.md, backgroundColor: 'rgba(15,29,110,0.95)', borderBottomWidth: 0.5, borderBottomColor: 'rgba(245,197,24,0.12)' },
   backButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', gap: Theme.spacing.xs },
   headerTitle: { fontSize: Theme.fontSize.lg, fontWeight: '500', color: Colors.textPrimary },

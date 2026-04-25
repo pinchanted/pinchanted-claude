@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.sm,
   },
   pinCardWrapper: {
-    width: '31%',
+    width: '47%',
   },
 
   pinImage: {

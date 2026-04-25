@@ -566,7 +566,7 @@ const styles = StyleSheet.create({
 
   // Listing card
   listingCard: {
-    flex: 1,
+    width: '47%',
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 0.5,
     borderColor: 'rgba(245,197,24,0.15)',

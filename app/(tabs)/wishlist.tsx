@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
   emptyButtonText: { color: Colors.textPrimary, fontSize: Theme.fontSize.md, fontWeight: '500' },
   listContent: { padding: Theme.screenPadding, paddingBottom: 100, gap: Theme.spacing.md },
   columnWrapper: { gap: Theme.spacing.md },
-  pinCard: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: Colors.pinkBorder, borderRadius: Theme.radius.md, overflow: 'hidden' },
+  pinCard: { width: '47%', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: Colors.pinkBorder, borderRadius: Theme.radius.md, overflow: 'hidden' },
   pinImageWrap: { aspectRatio: 1, backgroundColor: 'rgba(249,200,216,0.05)', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   pinImage: { width: '100%', height: '100%' },
   pinPlaceholder: { fontSize: 36 },
