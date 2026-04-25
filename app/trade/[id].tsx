@@ -816,7 +816,7 @@ export default function TradeDetailScreen() {
               activeOpacity={0.7}
             >
               <AntDesign
-                name={star <= selectedRating ? 'star' : 'star'}
+                name="star"
                 size={32}
                 color={star <= selectedRating ? Colors.gold : 'rgba(255,255,255,0.2)'}
               />
@@ -866,9 +866,9 @@ export default function TradeDetailScreen() {
             {[1, 2, 3, 4, 5].map(star => (
               <AntDesign
                 key={star}
-                name={star <= (myRating?.rating || selectedRating) ? 'star' : 'star'}
+                name="star"
                 size={14}
-                color={Colors.gold}
+                color={star <= (myRating?.rating || selectedRating) ? Colors.gold : 'rgba(255,255,255,0.2)'}
               />
             ))}
           </View>
