@@ -290,8 +290,16 @@ export default function CollectionScreen() {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Text style={styles.headerTitle}>My Collection</Text>
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{pins.length} pins</Text>
+            <View style={styles.headerRight}>
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{pins.length} pins</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.shareButton}
+                onPress={() => router.push('/share-collection' as any)}
+              >
+                <AntDesign name="share-alt" size={16} color={Colors.gold} />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -404,6 +412,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm },
+  shareButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(245,197,24,0.1)', borderWidth: 0.5, borderColor: Colors.goldBorder, alignItems: 'center', justifyContent: 'center' },
 
   // Header
   header: {
