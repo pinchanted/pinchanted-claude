@@ -150,17 +150,13 @@ export default function PinDetailScreen() {
 
     // For non-owners: check user_wishlist table
     if (p.user_id !== profile?.id) {
-      const col = p.reference_pin_id ? 'reference_pin_id' : 'community_pin_id';
-      const val = (p as any).reference_pin_id || (p as any).community_pin_id;
-      if (val) {
-        const { data: wishlistEntry } = await supabase
-          .from('user_wishlist')
-          .select('id')
-          .eq('user_id', profile?.id)
-          .eq(col, val)
-          .maybeSingle();
-        setIsWishlisted(!!wishlistEntry);
-      }
+      const { data: wishlistEntry } = await supabase
+        .from('user_wishlist')
+        .select('id')
+        .eq('user_id', profile?.id)
+        .eq('collection_pin_id', p.id)
+        .maybeSingle();
+      setIsWishlisted(!!wishlistEntry);
     }
 
     setIsLoading(false);
@@ -309,18 +305,17 @@ export default function PinDetailScreen() {
   const handleWishlistToggle = async (val: boolean) => {
     setIsWishlisted(val);
     if (!pin || !profile?.id) return;
-    const refPinId = (pin as any).reference_pin_id;
-    const comPinId = (pin as any).community_pin_id;
     if (val) {
       await supabase.from('user_wishlist').upsert({
         user_id: profile.id,
-        reference_pin_id: refPinId || null,
-        community_pin_id: comPinId || null,
+        collection_pin_id: pin.id,
       });
     } else {
-      const col = refPinId ? 'reference_pin_id' : 'community_pin_id';
-      const colVal = refPinId || comPinId;
-      await supabase.from('user_wishlist').delete().eq('user_id', profile.id).eq(col, colVal);
+      await supabase
+        .from('user_wishlist')
+        .delete()
+        .eq('user_id', profile.id)
+        .eq('collection_pin_id', pin.id);
     }
   };
 
