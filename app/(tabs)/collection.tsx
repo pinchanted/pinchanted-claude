@@ -298,7 +298,7 @@ export default function CollectionScreen() {
                 style={styles.shareButton}
                 onPress={() => router.push('/share-collection' as any)}
               >
-                <AntDesign name="facebook" size={16} color={Colors.gold} />
+                <Text style={{ fontSize: 11, color: Colors.gold, fontWeight: '500' }}>Share</Text>
               </TouchableOpacity>
             </View>
           </View>
