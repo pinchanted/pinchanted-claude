@@ -379,7 +379,8 @@ export default function TradeDetailScreen() {
       return;
     }
     setRatingLoading(true);
-    const otherUserId = isInitiator ? trade!.recipient_id : trade!.initiator_id;
+    const isInitiatorLocal = trade?.initiator_id === profile?.id;
+    const otherUserId = isInitiatorLocal ? trade!.recipient_id : trade!.initiator_id;
     const { data, error } = await submitTradeRating(
       id, profile!.id, otherUserId, selectedRating, ratingComment || null
     );
