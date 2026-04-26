@@ -80,9 +80,10 @@ export default function ProfileScreen() {
     const { data: pins } = await supabase
       .from('collection_pins')
       .select('my_purchase_price')
-      .eq('user_id', profile.id);
+      .eq('user_id', profile.id)
+      .eq('is_deleted', false);
 
-    const { count: wishlistCount } = await supabase
+    const { count: myWishlistCount } = await supabase
       .from('user_wishlist')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', profile.id);
@@ -95,7 +96,7 @@ export default function ProfileScreen() {
       totalPins,
       totalValue,
       tradesCompleted: profile.trades_completed || 0,
-      wishlistCount: wishlistCount || 0,
+      wishlistCount: myWishlistCount || 0,
     });
   };
 
@@ -447,7 +448,7 @@ const styles = StyleSheet.create({
   ratingCardStars: { flexDirection: 'row', gap: 2 },
   ratingCardComment: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, lineHeight: 18, fontStyle: 'italic' },
   ratingCardDate: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
-  
+
   // Identity
   identityCard: {
     alignItems: 'center',
