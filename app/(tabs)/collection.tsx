@@ -298,7 +298,7 @@ export default function CollectionScreen() {
                 style={styles.shareButton}
                 onPress={() => router.push('/share-collection' as any)}
               >
-                <Text style={{ fontSize: 11, color: Colors.gold, fontWeight: '500' }}>Share</Text>
+                <Text style={{ fontSize: 14 }}>📤</Text>
               </TouchableOpacity>
             </View>
           </View>

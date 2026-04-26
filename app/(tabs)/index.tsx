@@ -162,8 +162,8 @@ useFocusEffect(
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/share-collection' as any)}>
-          <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(24,119,242,0.12)' }]}>
-            <AntDesign name="facebook" size={20} color="#1877F2" />
+<View style={[styles.quickActionIcon, { backgroundColor: 'rgba(24,119,242,0.12)' }]}>
+            <Text style={{ fontSize: 20 }}>📤</Text>
           </View>
           <Text style={styles.quickActionLabel}>Share</Text>
         </TouchableOpacity>
