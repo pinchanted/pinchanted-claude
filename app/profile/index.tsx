@@ -20,10 +20,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/stores/auth.store';
-import { supabase, updateProfile, uploadAvatarImage } from '../../src/lib/supabase';
+import { supabase, updateProfile, uploadAvatarImage, getUserRatings } from '../../src/lib/supabase';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
-
+import { GlobalHeader } from '../../src/components/GlobalHeader';
 
 
 const EXPERIENCE_LABELS: Record<string, string> = {
@@ -64,6 +64,7 @@ export default function ProfileScreen() {
   });
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
+  const [recentRatings, setRecentRatings] = useState<any[]>([]);
 
   useEffect(() => {
     if (profile?.id) fetchStats();
@@ -73,16 +74,18 @@ export default function ProfileScreen() {
   const fetchStats = async () => {
     if (!profile?.id) return;
 
+    const { data: ratings } = await getUserRatings(profile.id);
+    setRecentRatings(ratings || []);
+
     const { data: pins } = await supabase
       .from('collection_pins')
       .select('my_purchase_price')
       .eq('user_id', profile.id);
 
     const { count: wishlistCount } = await supabase
-      .from('collection_pins')
+      .from('user_wishlist')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', profile.id)
-      .eq('is_wishlisted', true);
+      .eq('user_id', profile.id);
 
     const totalPins = pins?.length || 0;
     const totalValue = pins?.reduce((sum, p) =>
@@ -148,8 +151,8 @@ export default function ProfileScreen() {
       colors={['#0f1d6e', '#0b1554', '#08103d']}
       style={styles.container}
     >
-      <SafeAreaView style={styles.safeArea}>
-
+      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+<GlobalHeader />
         {/* Header bar */}
         <View style={[styles.headerBar, { paddingTop: Theme.spacing.md + insets.top }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -241,6 +244,36 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>Trades</Text>
             </View>
           </View>
+
+{/* Recent ratings */}
+          {recentRatings.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Recent ratings</Text>
+              {recentRatings.slice(0, 3).map(rating => (
+                <View key={rating.id} style={styles.ratingCard}>
+                  <View style={styles.ratingCardHeader}>
+                    <Text style={styles.ratingCardUsername}>@{rating.rater?.username}</Text>
+                    <View style={styles.ratingCardStars}>
+                      {[1,2,3,4,5].map(star => (
+                        <AntDesign
+                          key={star}
+                          name="star"
+                          size={12}
+                          color={star <= rating.rating ? Colors.gold : 'rgba(255,255,255,0.15)'}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                  {rating.comment && (
+                    <Text style={styles.ratingCardComment}>{rating.comment}</Text>
+                  )}
+                  <Text style={styles.ratingCardDate}>
+                    {new Date(rating.created_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           {/* Collecting style */}
           {collectingStyles.length > 0 && (
@@ -408,6 +441,13 @@ const styles = StyleSheet.create({
     gap: Theme.spacing.xl,
   },
 
+  ratingCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.15)', borderRadius: Theme.radius.md, padding: Theme.spacing.md, gap: Theme.spacing.xs },
+  ratingCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  ratingCardUsername: { fontSize: Theme.fontSize.sm, color: Colors.textPrimary, fontWeight: '500' },
+  ratingCardStars: { flexDirection: 'row', gap: 2 },
+  ratingCardComment: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, lineHeight: 18, fontStyle: 'italic' },
+  ratingCardDate: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
+  
   // Identity
   identityCard: {
     alignItems: 'center',
