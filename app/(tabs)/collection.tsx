@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AntDesign } from '@expo/vector-icons';
+import { AntDesign, Feather } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useCollectionStore } from '../../src/stores/collection.store';
 import { Colors } from '../../src/constants/colors';
@@ -298,7 +298,7 @@ export default function CollectionScreen() {
                 style={styles.shareButton}
                 onPress={() => router.push('/share-collection' as any)}
               >
-                <Text style={{ fontSize: 14 }}>📤</Text>
+                <Feather name="facebook" size={14} color="#1877F2" />
               </TouchableOpacity>
             </View>
           </View>
