@@ -26,6 +26,7 @@ import { Theme } from '../../src/constants/theme';
 import { GlobalHeader } from '../../src/components/GlobalHeader';
 
 
+
 const EXPERIENCE_LABELS: Record<string, string> = {
   'under-1': 'New Collector',
   '1-2': 'Casual Collector',

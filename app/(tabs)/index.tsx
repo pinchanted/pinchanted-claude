@@ -19,6 +19,9 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { supabase } from '../../src/lib/supabase';
 import { Colors } from '../../src/constants/colors';
 import { Theme } from '../../src/constants/theme';
+import { Feather } from '@expo/vector-icons';
+
+
 
 interface HomeStats {
   totalPins: number;
@@ -123,7 +126,7 @@ useFocusEffect(
               >
                 <View style={[styles.quickActionIcon,
                   { backgroundColor: 'rgba(192,24,42,0.15)' }]}>
-                  <AntDesign name="plus" size={20} color={Colors.crimson} />
+                  <Feather name="plus-circle" size={20} color={Colors.crimson} />
                 </View>
                 <Text style={styles.quickActionLabel}>Add pin</Text>
               </TouchableOpacity>
@@ -134,7 +137,7 @@ useFocusEffect(
               >
                 <View style={[styles.quickActionIcon,
                   { backgroundColor: 'rgba(245,197,24,0.12)' }]}>
-                  <AntDesign name="search" size={20} color={Colors.gold} />
+                  <Feather name="search" size={20} color={Colors.gold} />
                 </View>
                 <Text style={styles.quickActionLabel}>Browse</Text>
               </TouchableOpacity>
@@ -145,7 +148,7 @@ useFocusEffect(
               >
                 <View style={[styles.quickActionIcon,
                   { backgroundColor: 'rgba(93,202,122,0.12)' }]}>
-                  <AntDesign name="swap" size={20} color={Colors.success} />
+                  <Feather name="repeat" size={20} color={Colors.success} />
                 </View>
                 <Text style={styles.quickActionLabel}>Trades</Text>
               </TouchableOpacity>
@@ -156,14 +159,14 @@ useFocusEffect(
               >
                 <View style={[styles.quickActionIcon,
                   { backgroundColor: 'rgba(249,200,216,0.12)' }]}>
-                  <AntDesign name="heart" size={20} color={Colors.pink} />
+                  <Feather name="heart" size={20} color={Colors.pink} />
                 </View>
                 <Text style={styles.quickActionLabel}>Wishlist</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/share-collection' as any)}>
 <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(24,119,242,0.12)' }]}>
-            <Text style={{ fontSize: 20 }}>📤</Text>
+            <Feather name="share-2" size={20} color="#1877F2" />
           </View>
           <Text style={styles.quickActionLabel}>Share</Text>
         </TouchableOpacity>
