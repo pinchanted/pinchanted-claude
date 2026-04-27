@@ -393,7 +393,7 @@ export default function TradeDetailScreen() {
     }
     setRatingLoading(false);
   };
-  
+
   const handleDispute = () => {
     Alert.alert(
       'Raise a dispute?',
@@ -480,20 +480,37 @@ export default function TradeDetailScreen() {
     </View>
   );
 
+  // ── renderUserCard — username is tappable for non-self users ──
   const renderUserCard = (user: any, label: string, isYou: boolean) => (
     <View style={styles.userCard}>
-      <View style={styles.userAvatar}>
-        {user?.avatar_url ? (
-          <Image source={{ uri: user.avatar_url }} style={styles.userAvatarImage} resizeMode="cover" />
-        ) : (
-          <Text style={styles.userAvatarText}>{getUserInitial(user)}</Text>
-        )}
-      </View>
+      <TouchableOpacity
+        onPress={() => !isYou && user?.username && router.push(`/profile/${user.username}` as any)}
+        activeOpacity={isYou ? 1 : 0.7}
+      >
+        <View style={styles.userAvatar}>
+          {user?.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={styles.userAvatarImage} resizeMode="cover" />
+          ) : (
+            <Text style={styles.userAvatarText}>{getUserInitial(user)}</Text>
+          )}
+        </View>
+      </TouchableOpacity>
       <View style={styles.userInfo}>
         <Text style={styles.userLabel}>{label}</Text>
-        <Text style={styles.userName}>
-          @{user?.username || 'unknown'} {isYou && <Text style={styles.youBadge}>(you)</Text>}
-        </Text>
+        {isYou ? (
+          <Text style={styles.userName}>
+            @{user?.username || 'unknown'} <Text style={styles.youBadge}>(you)</Text>
+          </Text>
+        ) : (
+          <TouchableOpacity
+            onPress={() => user?.username && router.push(`/profile/${user.username}` as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.userName, styles.userNameLink]}>
+              @{user?.username || 'unknown'}
+            </Text>
+          </TouchableOpacity>
+        )}
         {(user?.trade_rating ?? 0) > 0 && (
           <View style={styles.ratingRow}>
             <AntDesign name="star" size={10} color={Colors.gold} />
@@ -713,7 +730,6 @@ export default function TradeDetailScreen() {
                   </>
                 )}
 
-{/* Counter offer received */}
                 {trade.status === 'in_progress' && (trade as any).last_action_by !== profile?.id && (
                   <>
                     <View style={styles.counterReceivedRow}>
@@ -740,7 +756,6 @@ export default function TradeDetailScreen() {
                   </>
                 )}
 
-                {/* I countered — waiting */}
                 {trade.status === 'in_progress' && (trade as any).last_action_by === profile?.id && (
                   <View style={styles.waitingRow}>
                     <AntDesign name="clock-circle" size={16} color={Colors.textMuted} />
@@ -791,92 +806,85 @@ export default function TradeDetailScreen() {
                   </View>
                 )}
 
-{trade.status === 'completed' && (
-  <>
-    <View style={styles.completedRow}>
-      <Text style={styles.completedEmoji}>🎉</Text>
-      <Text style={styles.completedText}>Trade completed!</Text>
-    </View>
- 
-    {/* Rating section */}
-    {!myRating && !ratingSubmitted ? (
-      <View style={styles.ratingCard}>
-        <Text style={styles.ratingTitle}>Rate this trade</Text>
-        <Text style={styles.ratingSubtitle}>
-          How was your experience trading with @{(otherUser as any)?.username}?
-        </Text>
- 
-        {/* Star picker */}
-        <View style={styles.starRow}>
-          {[1, 2, 3, 4, 5].map(star => (
-            <TouchableOpacity
-              key={star}
-              onPress={() => setSelectedRating(star)}
-              style={styles.starBtn}
-              activeOpacity={0.7}
-            >
-              <AntDesign
-                name="star"
-                size={32}
-                color={star <= selectedRating ? Colors.gold : 'rgba(255,255,255,0.2)'}
-              />
-            </TouchableOpacity>
-          ))}
-        </View>
- 
-        {selectedRating > 0 && (
-          <Text style={styles.ratingLabel}>
-            {selectedRating === 1 ? 'Poor' :
-             selectedRating === 2 ? 'Fair' :
-             selectedRating === 3 ? 'Good' :
-             selectedRating === 4 ? 'Great' : 'Excellent!'}
-          </Text>
-        )}
- 
-        {/* Optional comment */}
-        <TextInput
-          style={styles.ratingInput}
-          value={ratingComment}
-          onChangeText={setRatingComment}
-          placeholder="Leave a comment (optional)..."
-          placeholderTextColor={Colors.textPlaceholder}
-          multiline
-          numberOfLines={2}
-          maxLength={200}
-        />
- 
-        <TouchableOpacity
-          style={[styles.ratingSubmitBtn, selectedRating === 0 && styles.ratingSubmitBtnDisabled]}
-          onPress={handleSubmitRating}
-          disabled={ratingLoading || selectedRating === 0}
-        >
-          {ratingLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.ratingSubmitBtnText}>Submit rating</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    ) : (
-      <View style={styles.ratingSubmittedCard}>
-        <AntDesign name="check-circle" size={16} color={Colors.success} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.ratingSubmittedText}>You rated this trade</Text>
-          <View style={styles.starRowSmall}>
-            {[1, 2, 3, 4, 5].map(star => (
-              <AntDesign
-                key={star}
-                name="star"
-                size={14}
-                color={star <= (myRating?.rating || selectedRating) ? Colors.gold : 'rgba(255,255,255,0.2)'}
-              />
-            ))}
-          </View>
-        </View>
-      </View>
-    )}
-  </>
-)}
+                {trade.status === 'completed' && (
+                  <>
+                    <View style={styles.completedRow}>
+                      <Text style={styles.completedEmoji}>🎉</Text>
+                      <Text style={styles.completedText}>Trade completed!</Text>
+                    </View>
+
+                    {!myRating && !ratingSubmitted ? (
+                      <View style={styles.ratingCard}>
+                        <Text style={styles.ratingTitle}>Rate this trade</Text>
+                        <Text style={styles.ratingSubtitle}>
+                          How was your experience trading with @{(otherUser as any)?.username}?
+                        </Text>
+                        <View style={styles.starRow}>
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <TouchableOpacity
+                              key={star}
+                              onPress={() => setSelectedRating(star)}
+                              style={styles.starBtn}
+                              activeOpacity={0.7}
+                            >
+                              <AntDesign
+                                name="star"
+                                size={32}
+                                color={star <= selectedRating ? Colors.gold : 'rgba(255,255,255,0.2)'}
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        {selectedRating > 0 && (
+                          <Text style={styles.ratingLabel}>
+                            {selectedRating === 1 ? 'Poor' :
+                             selectedRating === 2 ? 'Fair' :
+                             selectedRating === 3 ? 'Good' :
+                             selectedRating === 4 ? 'Great' : 'Excellent!'}
+                          </Text>
+                        )}
+                        <TextInput
+                          style={styles.ratingInput}
+                          value={ratingComment}
+                          onChangeText={setRatingComment}
+                          placeholder="Leave a comment (optional)..."
+                          placeholderTextColor={Colors.textPlaceholder}
+                          multiline
+                          numberOfLines={2}
+                          maxLength={200}
+                        />
+                        <TouchableOpacity
+                          style={[styles.ratingSubmitBtn, selectedRating === 0 && styles.ratingSubmitBtnDisabled]}
+                          onPress={handleSubmitRating}
+                          disabled={ratingLoading || selectedRating === 0}
+                        >
+                          {ratingLoading ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.ratingSubmitBtnText}>Submit rating</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View style={styles.ratingSubmittedCard}>
+                        <AntDesign name="check-circle" size={16} color={Colors.success} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.ratingSubmittedText}>You rated this trade</Text>
+                          <View style={styles.starRowSmall}>
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <AntDesign
+                                key={star}
+                                name="star"
+                                size={14}
+                                color={star <= (myRating?.rating || selectedRating) ? Colors.gold : 'rgba(255,255,255,0.2)'}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                )}
 
                 {(trade.status === 'declined' || trade.status === 'expired') && (
                   <View style={styles.waitingRow}>
@@ -988,6 +996,7 @@ const styles = StyleSheet.create({
   userInfo: { flex: 1, gap: 2 },
   userLabel: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   userName: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
+  userNameLink: { color: Colors.gold, textDecorationLine: 'underline' },
   youBadge: { color: Colors.gold, fontWeight: '400' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   ratingText: { fontSize: Theme.fontSize.xs, color: Colors.gold },
@@ -1061,83 +1070,17 @@ const styles = StyleSheet.create({
   counterBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500' as const, color: Colors.gold },
   counterReceivedRow: { flexDirection: 'row', alignItems: 'flex-start' as const, gap: Theme.spacing.sm, padding: Theme.spacing.sm, backgroundColor: 'rgba(245,197,24,0.06)', borderRadius: Theme.radius.sm, borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)' },
   counterReceivedText: { flex: 1, fontSize: Theme.fontSize.sm, color: Colors.gold, lineHeight: 18 },
-  ratingCard: {
-  backgroundColor: 'rgba(245,197,24,0.06)',
-  borderWidth: 0.5,
-  borderColor: 'rgba(245,197,24,0.2)',
-  borderRadius: Theme.radius.md,
-  padding: Theme.spacing.md,
-  gap: Theme.spacing.md,
-},
-ratingTitle: {
-  fontSize: Theme.fontSize.md,
-  fontWeight: '500',
-  color: Colors.textPrimary,
-},
-ratingSubtitle: {
-  fontSize: Theme.fontSize.sm,
-  color: Colors.textMuted,
-  lineHeight: 18,
-},
-starRow: {
-  flexDirection: 'row',
-  justifyContent: 'center',
-  gap: Theme.spacing.md,
-},
-starRowSmall: {
-  flexDirection: 'row',
-  gap: 2,
-  marginTop: 2,
-},
-starBtn: {
-  padding: 4,
-},
-ratingLabel: {
-  fontSize: Theme.fontSize.sm,
-  color: Colors.gold,
-  textAlign: 'center',
-  fontWeight: '500',
-},
-ratingInput: {
-  backgroundColor: 'rgba(255,255,255,0.07)',
-  borderWidth: 0.5,
-  borderColor: 'rgba(245,197,24,0.2)',
-  borderRadius: Theme.radius.sm,
-  paddingHorizontal: Theme.spacing.md,
-  paddingVertical: Theme.spacing.sm,
-  color: Colors.textPrimary,
-  fontSize: Theme.fontSize.sm,
-  minHeight: 60,
-  textAlignVertical: 'top',
-},
-ratingSubmitBtn: {
-  backgroundColor: Colors.crimson,
-  borderRadius: Theme.radius.pill,
-  paddingVertical: Theme.spacing.md,
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: Colors.goldBorder,
-},
-ratingSubmitBtnDisabled: {
-  opacity: 0.4,
-},
-ratingSubmitBtnText: {
-  fontSize: Theme.fontSize.md,
-  fontWeight: '500',
-  color: Colors.textPrimary,
-},
-ratingSubmittedCard: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: Theme.spacing.sm,
-  padding: Theme.spacing.sm,
-  backgroundColor: 'rgba(93,202,122,0.08)',
-  borderRadius: Theme.radius.sm,
-  borderWidth: 0.5,
-  borderColor: 'rgba(93,202,122,0.2)',
-},
-ratingSubmittedText: {
-  fontSize: Theme.fontSize.sm,
-  color: Colors.success,
-},
+  ratingCard: { backgroundColor: 'rgba(245,197,24,0.06)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.md, padding: Theme.spacing.md, gap: Theme.spacing.md },
+  ratingTitle: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
+  ratingSubtitle: { fontSize: Theme.fontSize.sm, color: Colors.textMuted, lineHeight: 18 },
+  starRow: { flexDirection: 'row', justifyContent: 'center', gap: Theme.spacing.md },
+  starRowSmall: { flexDirection: 'row', gap: 2, marginTop: 2 },
+  starBtn: { padding: 4 },
+  ratingLabel: { fontSize: Theme.fontSize.sm, color: Colors.gold, textAlign: 'center', fontWeight: '500' },
+  ratingInput: { backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 0.5, borderColor: 'rgba(245,197,24,0.2)', borderRadius: Theme.radius.sm, paddingHorizontal: Theme.spacing.md, paddingVertical: Theme.spacing.sm, color: Colors.textPrimary, fontSize: Theme.fontSize.sm, minHeight: 60, textAlignVertical: 'top' },
+  ratingSubmitBtn: { backgroundColor: Colors.crimson, borderRadius: Theme.radius.pill, paddingVertical: Theme.spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.goldBorder },
+  ratingSubmitBtnDisabled: { opacity: 0.4 },
+  ratingSubmitBtnText: { fontSize: Theme.fontSize.md, fontWeight: '500', color: Colors.textPrimary },
+  ratingSubmittedCard: { flexDirection: 'row', alignItems: 'center', gap: Theme.spacing.sm, padding: Theme.spacing.sm, backgroundColor: 'rgba(93,202,122,0.08)', borderRadius: Theme.radius.sm, borderWidth: 0.5, borderColor: 'rgba(93,202,122,0.2)' },
+  ratingSubmittedText: { fontSize: Theme.fontSize.sm, color: Colors.success },
 });

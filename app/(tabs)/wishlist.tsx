@@ -163,7 +163,15 @@ export default function WishlistScreen() {
           <Text style={styles.pinName} numberOfLines={2}>{item.name}</Text>
           {item.series_name && <Text style={styles.pinSeries} numberOfLines={1}>{item.series_name}</Text>}
           {item.owner_username && (
-            <Text style={styles.pinOwner} numberOfLines={1}>@{item.owner_username}</Text>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                router.push(`/profile/${item.owner_username}` as any);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.pinOwner} numberOfLines={1}>@{item.owner_username}</Text>
+            </TouchableOpacity>
           )}
           {item.condition && <Text style={styles.pinCondition}>{item.condition}</Text>}
 
@@ -301,7 +309,7 @@ const styles = StyleSheet.create({
   pinInfo: { padding: Theme.spacing.sm, gap: 3 },
   pinName: { fontSize: Theme.fontSize.sm, fontWeight: '500', color: Colors.textPrimary, lineHeight: 16 },
   pinSeries: { fontSize: Theme.fontSize.xs, color: Colors.gold, opacity: 0.65 },
-  pinOwner: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
+  pinOwner: { fontSize: Theme.fontSize.xs, color: Colors.gold, textDecorationLine: 'underline' },
   pinCondition: { fontSize: Theme.fontSize.xs, color: Colors.textMuted },
   pinActions: { flexDirection: 'row', gap: Theme.spacing.xs, marginTop: Theme.spacing.xs },
   tradeButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: Colors.goldFaint, borderWidth: 0.5, borderColor: Colors.goldBorder, borderRadius: Theme.radius.pill, paddingVertical: 5 },
